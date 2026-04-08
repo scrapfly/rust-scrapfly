@@ -1,0 +1,48 @@
+[package]
+name = "scrapfly-sdk"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Async Rust client for the Scrapfly web scraping, screenshot, extraction and crawler APIs"
+license = "BSD-2-Clause"
+repository = "https://github.com/scrapfly/rust-scrapfly"
+homepage = "https://scrapfly.io"
+documentation = "https://docs.rs/scrapfly-sdk"
+readme = "README.md"
+keywords = ["scraping", "scrapfly", "web", "crawler", "screenshot"]
+categories = ["api-bindings", "web-programming"]
+
+[dependencies]
+tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "gzip"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_urlencoded = "0.7"
+thiserror = "1"
+base64 = "0.22"
+url = "2"
+futures-util = "0.3"
+bytes = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+
+[[example]]
+name = "scrape_basic"
+path = "examples/scrape_basic.rs"
+
+[[example]]
+name = "concurrent_scrape"
+path = "examples/concurrent_scrape.rs"
+
+[[example]]
+name = "screenshot"
+path = "examples/screenshot.rs"
+
+[[example]]
+name = "extraction"
+path = "examples/extraction.rs"
+
+[[example]]
+name = "crawler_lifecycle"
+path = "examples/crawler_lifecycle.rs"
