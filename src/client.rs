@@ -14,6 +14,7 @@ use crate::config::crawler::CrawlerConfig;
 use crate::config::extraction::ExtractionConfig;
 use crate::config::scrape::ScrapeConfig;
 use crate::config::screenshot::ScreenshotConfig;
+use crate::enums::HttpMethod;
 use crate::error::{from_response, parse_retry_after, ApiError, ScrapflyError};
 use crate::result::account::{AccountData, VerifyApiKeyResult};
 use crate::result::crawler::{
@@ -21,7 +22,6 @@ use crate::result::crawler::{
     CrawlerUrls,
 };
 use crate::result::extraction::ExtractionResult;
-use crate::enums::HttpMethod;
 use crate::result::scrape::{ResultData, ScrapeResult};
 use crate::result::screenshot::{ScreenshotMetadata, ScreenshotResult};
 
