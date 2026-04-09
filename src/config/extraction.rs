@@ -30,6 +30,8 @@ pub struct ExtractionConfig {
     pub document_compression_format: Option<CompressionFormat>,
     /// Webhook name.
     pub webhook: Option<String>,
+    /// Maximum time in seconds for extraction processing.
+    pub timeout: Option<u32>,
 }
 
 impl ExtractionConfig {
@@ -92,6 +94,9 @@ impl ExtractionConfig {
         if let Some(wh) = &self.webhook {
             out.push(("webhook_name".into(), wh.clone()));
         }
+        if let Some(t) = self.timeout {
+            out.push(("timeout".into(), t.to_string()));
+        }
         Ok(out)
     }
 }
@@ -144,6 +149,10 @@ impl ExtractionConfigBuilder {
         self
     }
     /// Webhook name.
+    pub fn timeout(mut self, v: u32) -> Self {
+        self.cfg.timeout = Some(v);
+        self
+    }
     pub fn webhook(mut self, v: impl Into<String>) -> Self {
         self.cfg.webhook = Some(v.into());
         self

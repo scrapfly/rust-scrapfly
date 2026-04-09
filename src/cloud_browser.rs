@@ -212,6 +212,146 @@ impl Client {
         Ok(serde_json::from_slice(&body)?)
     }
 
+    /// List browser extensions for the account.
+    pub async fn cloud_browser_extension_list(
+        &self,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        let url = format!(
+            "{}/extension?key={}",
+            rest_base(self.cloud_browser_host()),
+            self.api_key()
+        );
+        let url = Url::parse(&url)
+            .map_err(|e| ScrapflyError::Config(format!("invalid extension url: {}", e)))?;
+        let resp = self.send_with_retry(Method::GET, url, None, None).await?;
+        let status = resp.status().as_u16();
+        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        if status != 200 {
+            return Err(from_response(status, &body, 0, false));
+        }
+        Ok(serde_json::from_slice(&body)?)
+    }
+
+    /// Get details of a specific browser extension.
+    pub async fn cloud_browser_extension_get(
+        &self,
+        extension_id: &str,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        let url = format!(
+            "{}/extension/{}?key={}",
+            rest_base(self.cloud_browser_host()),
+            extension_id,
+            self.api_key()
+        );
+        let url = Url::parse(&url)
+            .map_err(|e| ScrapflyError::Config(format!("invalid extension url: {}", e)))?;
+        let resp = self.send_with_retry(Method::GET, url, None, None).await?;
+        let status = resp.status().as_u16();
+        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        if status != 200 {
+            return Err(from_response(status, &body, 0, false));
+        }
+        Ok(serde_json::from_slice(&body)?)
+    }
+
+    /// Upload a browser extension from a local file (.zip or .crx).
+    pub async fn cloud_browser_extension_upload(
+        &self,
+        file_path: &std::path::Path,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        let url = format!(
+            "{}/extension?key={}",
+            rest_base(self.cloud_browser_host()),
+            self.api_key()
+        );
+        let url = Url::parse(&url)
+            .map_err(|e| ScrapflyError::Config(format!("invalid extension url: {}", e)))?;
+        let file_bytes = std::fs::read(file_path).map_err(|e| {
+            ScrapflyError::Config(format!("failed to read extension file: {}", e))
+        })?;
+        let file_name = file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("extension.zip")
+            .to_string();
+        // Build multipart body manually (reqwest multipart feature not enabled)
+        let boundary = format!("----ScrapflyBoundary{}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis());
+        let mut body = Vec::new();
+        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        body.extend_from_slice(
+            format!(
+                "Content-Disposition: form-data; name=\"file\"; filename=\"{}\"\r\n\
+                 Content-Type: application/octet-stream\r\n\r\n",
+                file_name
+            )
+            .as_bytes(),
+        );
+        body.extend_from_slice(&file_bytes);
+        body.extend_from_slice(format!("\r\n--{}--\r\n", boundary).as_bytes());
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            CONTENT_TYPE,
+            HeaderValue::from_str(&format!("multipart/form-data; boundary={}", boundary))
+                .map_err(|e| ScrapflyError::Config(format!("invalid content-type: {}", e)))?,
+        );
+        let resp = self
+            .send_with_retry(Method::POST, url, Some(headers), Some(body))
+            .await?;
+        let status = resp.status().as_u16();
+        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        if status != 200 && status != 201 {
+            return Err(from_response(status, &body, 0, false));
+        }
+        Ok(serde_json::from_slice(&body)?)
+    }
+
+    /// Delete a browser extension by ID.
+    pub async fn cloud_browser_extension_delete(
+        &self,
+        extension_id: &str,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        let url = format!(
+            "{}/extension/{}?key={}",
+            rest_base(self.cloud_browser_host()),
+            extension_id,
+            self.api_key()
+        );
+        let url = Url::parse(&url)
+            .map_err(|e| ScrapflyError::Config(format!("invalid extension url: {}", e)))?;
+        let resp = self
+            .send_with_retry(Method::DELETE, url, None, None)
+            .await?;
+        let status = resp.status().as_u16();
+        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        if status != 200 {
+            return Err(from_response(status, &body, 0, false));
+        }
+        Ok(serde_json::from_slice(&body)?)
+    }
+
+    /// Get debug recording playback metadata for a run.
+    pub async fn cloud_browser_playback(
+        &self,
+        run_id: &str,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        let url = format!(
+            "{}/run/{}/playback?key={}",
+            rest_base(self.cloud_browser_host()),
+            run_id,
+            self.api_key()
+        );
+        let url = Url::parse(&url)
+            .map_err(|e| ScrapflyError::Config(format!("invalid playback url: {}", e)))?;
+        let resp = self.send_with_retry(Method::GET, url, None, None).await?;
+        let status = resp.status().as_u16();
+        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        if status != 200 {
+            return Err(from_response(status, &body, 0, false));
+        }
+        Ok(serde_json::from_slice(&body)?)
+    }
+
     /// Terminate a Cloud Browser session.
     pub async fn cloud_browser_session_stop(&self, session_id: &str) -> Result<(), ScrapflyError> {
         if session_id.is_empty() {
@@ -232,5 +372,42 @@ impl Client {
             return Err(from_response(status, &body, 0, false));
         }
         Ok(())
+    }
+
+    /// List all running Cloud Browser sessions.
+    pub async fn cloud_browser_sessions(&self) -> Result<serde_json::Value, ScrapflyError> {
+        let url = format!(
+            "{}/sessions?key={}",
+            rest_base(self.cloud_browser_host()),
+            self.api_key()
+        );
+        let url = Url::parse(&url)
+            .map_err(|e| ScrapflyError::Config(format!("invalid sessions url: {}", e)))?;
+        let resp = self.send_with_retry(Method::GET, url, None, None).await?;
+        let status = resp.status().as_u16();
+        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        if status != 200 {
+            return Err(from_response(status, &body, 0, false));
+        }
+        Ok(serde_json::from_slice(&body)?)
+    }
+
+    /// Download a debug session recording video (raw bytes).
+    pub async fn cloud_browser_video(&self, run_id: &str) -> Result<Vec<u8>, ScrapflyError> {
+        let url = format!(
+            "{}/run/{}/video?key={}",
+            rest_base(self.cloud_browser_host()),
+            run_id,
+            self.api_key()
+        );
+        let url = Url::parse(&url)
+            .map_err(|e| ScrapflyError::Config(format!("invalid video url: {}", e)))?;
+        let resp = self.send_with_retry(Method::GET, url, None, None).await?;
+        let status = resp.status().as_u16();
+        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        if status != 200 {
+            return Err(from_response(status, &body, 0, false));
+        }
+        Ok(body.to_vec())
     }
 }

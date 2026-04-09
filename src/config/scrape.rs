@@ -92,6 +92,10 @@ pub struct ScrapeConfig {
     pub lang: Vec<String>,
     /// Browser brand (`chrome` | `edge` | `brave` | `opera`).
     pub browser_brand: Option<String>,
+    /// Spoof browser geolocation. Format: `"latitude,longitude"`.
+    pub geolocation: Option<String>,
+    /// Page load stage to wait for. `complete` (default) or `domcontentloaded`.
+    pub rendering_stage: Option<String>,
     /// Return the raw upstream response instead of the JSON envelope.
     /// When true, callers must use `Client::scrape_proxified()` which
     /// returns `reqwest::Response` directly.
@@ -134,6 +138,14 @@ impl ScrapeConfig {
             }
             if let Some(wait) = self.rendering_wait {
                 out.push(("rendering_wait".into(), wait.to_string()));
+            }
+            if let Some(ref geo) = self.geolocation {
+                out.push(("geolocation".into(), geo.clone()));
+            }
+            if let Some(ref stage) = self.rendering_stage {
+                if stage != "complete" {
+                    out.push(("rendering_stage".into(), stage.clone()));
+                }
             }
             if self.auto_scroll {
                 out.push(("auto_scroll".into(), "true".into()));
@@ -500,6 +512,16 @@ impl ScrapeConfigBuilder {
         self
     }
     /// Enable proxified response mode (raw upstream pass-through).
+    /// Spoof browser geolocation. Format: `"latitude,longitude"`.
+    pub fn geolocation(mut self, v: impl Into<String>) -> Self {
+        self.cfg.geolocation = Some(v.into());
+        self
+    }
+    /// Set page load stage: `"complete"` (default) or `"domcontentloaded"`.
+    pub fn rendering_stage(mut self, v: impl Into<String>) -> Self {
+        self.cfg.rendering_stage = Some(v.into());
+        self
+    }
     pub fn proxified_response(mut self) -> Self {
         self.cfg.proxified_response = true;
         self
