@@ -213,9 +213,7 @@ impl Client {
     }
 
     /// List browser extensions for the account.
-    pub async fn cloud_browser_extension_list(
-        &self,
-    ) -> Result<serde_json::Value, ScrapflyError> {
+    pub async fn cloud_browser_extension_list(&self) -> Result<serde_json::Value, ScrapflyError> {
         let url = format!(
             "{}/extension?key={}",
             rest_base(self.cloud_browser_host()),
@@ -266,17 +264,21 @@ impl Client {
         );
         let url = Url::parse(&url)
             .map_err(|e| ScrapflyError::Config(format!("invalid extension url: {}", e)))?;
-        let file_bytes = std::fs::read(file_path).map_err(|e| {
-            ScrapflyError::Config(format!("failed to read extension file: {}", e))
-        })?;
+        let file_bytes = std::fs::read(file_path)
+            .map_err(|e| ScrapflyError::Config(format!("failed to read extension file: {}", e)))?;
         let file_name = file_path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("extension.zip")
             .to_string();
         // Build multipart body manually (reqwest multipart feature not enabled)
-        let boundary = format!("----ScrapflyBoundary{}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis());
+        let boundary = format!(
+            "----ScrapflyBoundary{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+        );
         let mut body = Vec::new();
         body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
         body.extend_from_slice(
