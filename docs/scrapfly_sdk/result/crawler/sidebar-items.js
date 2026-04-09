@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["CrawlerArtifactType"],"mod":["status"],"struct":["CrawlContent","CrawlerArtifact","CrawlerContents","CrawlerContentsLinks","CrawlerStartResponse","CrawlerState","CrawlerStatus","CrawlerUrlEntry","CrawlerUrls"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ScrapflyError"],"fn":["from_response"],"struct":["ApiError"]};
