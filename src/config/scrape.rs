@@ -38,6 +38,10 @@ pub struct ScrapeConfig {
     pub cache_clear: bool,
     /// Timeout in milliseconds.
     pub timeout: Option<u32>,
+    /// Maximum API credit cost the caller is willing to spend on this
+    /// request. If the server's pre-flight estimate exceeds this budget the
+    /// request is rejected before execution.
+    pub cost_budget: Option<u32>,
     /// Enable automatic retries.
     pub retry: Option<bool>,
     /// Session name.
@@ -88,6 +92,10 @@ pub struct ScrapeConfig {
     pub lang: Vec<String>,
     /// Browser brand (`chrome` | `edge` | `brave` | `opera`).
     pub browser_brand: Option<String>,
+    /// Return the raw upstream response instead of the JSON envelope.
+    /// When true, callers must use `Client::scrape_proxified()` which
+    /// returns `reqwest::Response` directly.
+    pub proxified_response: bool,
 }
 
 impl ScrapeConfig {
@@ -175,6 +183,9 @@ impl ScrapeConfig {
         if let Some(timeout) = self.timeout {
             out.push(("timeout".into(), timeout.to_string()));
         }
+        if let Some(budget) = self.cost_budget {
+            out.push(("cost_budget".into(), budget.to_string()));
+        }
         if self.debug {
             out.push(("debug".into(), "true".into()));
         }
@@ -207,6 +218,9 @@ impl ScrapeConfig {
         }
         if let Some(bb) = &self.browser_brand {
             out.push(("browser_brand".into(), bb.clone()));
+        }
+        if self.proxified_response {
+            out.push(("proxified_response".into(), "true".into()));
         }
 
         if let Some(format) = self.format {
@@ -342,6 +356,14 @@ impl ScrapeConfigBuilder {
         self.cfg.cache_clear = v;
         self
     }
+    /// Set the maximum API credit cost the caller will accept for this
+    /// request. The server rejects the request pre-flight if its estimate
+    /// exceeds the budget, so callers get a fast failure instead of a
+    /// surprise bill.
+    pub fn cost_budget(mut self, v: u32) -> Self {
+        self.cfg.cost_budget = Some(v);
+        self
+    }
     /// Set request timeout (ms).
     pub fn timeout(mut self, v: u32) -> Self {
         self.cfg.timeout = Some(v);
@@ -475,6 +497,11 @@ impl ScrapeConfigBuilder {
     /// Set browser brand.
     pub fn browser_brand(mut self, v: impl Into<String>) -> Self {
         self.cfg.browser_brand = Some(v.into());
+        self
+    }
+    /// Enable proxified response mode (raw upstream pass-through).
+    pub fn proxified_response(mut self) -> Self {
+        self.cfg.proxified_response = true;
         self
     }
 

@@ -358,6 +358,36 @@ impl Client {
         .buffer_unordered(limit)
     }
 
+    /// Scrape a URL with `proxified_response=true`, returning the raw
+    /// upstream `reqwest::Response` (target's status, headers, body).
+    ///
+    /// Unlike [`scrape()`], no JSON parsing occurs — the response body is
+    /// the target page's raw content. Scrapfly metadata is available on
+    /// the `X-Scrapfly-*` response headers (`Api-Cost`, `Content-Format`,
+    /// `Log`, etc.).
+    ///
+    /// Automatically forces `proxified_response=true` regardless of the
+    /// config's field value.
+    pub async fn scrape_proxified(
+        &self,
+        config: &ScrapeConfig,
+    ) -> Result<reqwest::Response, ScrapflyError> {
+        let mut cfg = config.clone();
+        cfg.proxified_response = true;
+        let pairs = cfg.to_query_pairs()?;
+        let url = self.build_url("/scrape", &pairs)?;
+        let method = match cfg.method {
+            Some(m) => Method::from_bytes(m.as_str().as_bytes())
+                .map_err(|e| ScrapflyError::Config(format!("invalid method: {}", e)))?,
+            None => Method::GET,
+        };
+        let body = cfg.body.clone();
+        let resp = self
+            .send_with_retry(method, url, None, body.map(|b| b.into_bytes()))
+            .await?;
+        Ok(resp)
+    }
+
     /// Screenshot a URL.
     pub async fn screenshot(
         &self,
