@@ -153,6 +153,7 @@ impl ExtractionConfigBuilder {
         self.cfg.timeout = Some(v);
         self
     }
+    /// Set webhook name for post-extraction notification.
     pub fn webhook(mut self, v: impl Into<String>) -> Self {
         self.cfg.webhook = Some(v.into());
         self

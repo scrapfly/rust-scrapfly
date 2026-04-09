@@ -522,6 +522,7 @@ impl ScrapeConfigBuilder {
         self.cfg.rendering_stage = Some(v.into());
         self
     }
+    /// Enable proxified response mode (raw upstream pass-through).
     pub fn proxified_response(mut self) -> Self {
         self.cfg.proxified_response = true;
         self
