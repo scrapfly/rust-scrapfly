@@ -385,6 +385,33 @@ impl Client {
         let resp = self
             .send_with_retry(method, url, None, body.map(|b| b.into_bytes()))
             .await?;
+        // Error restoration: if X-Scrapfly-Reject-Code is present, the
+        // scrape failed. Return a typed error so callers get the same
+        // interface as non-proxified mode.
+        if let Some(reject_code) = resp.headers().get("x-scrapfly-reject-code") {
+            let code = reject_code.to_str().unwrap_or("").to_string();
+            let desc = resp.headers().get("x-scrapfly-reject-description")
+                .and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+            let retryable = resp.headers().get("x-scrapfly-reject-retryable")
+                .and_then(|v| v.to_str().ok()).unwrap_or("false") == "true";
+            let retry_after_ms: u64 = if retryable {
+                resp.headers().get("retry-after")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(0) * 1000 // Retry-After header is in seconds
+            } else { 0 };
+            let status = resp.status().as_u16();
+            let doc = resp.headers().get("x-scrapfly-reject-doc")
+                .and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+            return Err(ScrapflyError::Api(crate::error::ApiError {
+                code,
+                message: format!("Proxified scrape error: {}", desc),
+                http_status: status,
+                documentation_url: doc,
+                hint: String::new(),
+                retry_after_ms,
+            }));
+        }
         Ok(resp)
     }
 
