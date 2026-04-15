@@ -278,14 +278,19 @@ impl Client {
 
     // ── Web Scraping API ─────────────────────────────────────────────
 
+    /// Fetch aggregate monitoring metrics for the Web Scraping API.
     pub async fn get_monitoring_metrics(
         &self,
         opts: &MonitoringMetricsOptions,
     ) -> Result<serde_json::Value, ScrapflyError> {
-        self.fetch_monitoring_json("/scrape/monitoring/metrics", &Self::build_metrics_pairs(opts))
-            .await
+        self.fetch_monitoring_json(
+            "/scrape/monitoring/metrics",
+            &Self::build_metrics_pairs(opts),
+        )
+        .await
     }
 
+    /// Fetch per-target monitoring metrics for the Web Scraping API.
     pub async fn get_monitoring_target_metrics(
         &self,
         opts: &MonitoringTargetMetricsOptions,
@@ -297,14 +302,19 @@ impl Client {
 
     // ── Screenshot API ───────────────────────────────────────────────
 
+    /// Fetch aggregate monitoring metrics for the Screenshot API.
     pub async fn get_screenshot_monitoring_metrics(
         &self,
         opts: &MonitoringMetricsOptions,
     ) -> Result<serde_json::Value, ScrapflyError> {
-        self.fetch_monitoring_json("/screenshot/monitoring/metrics", &Self::build_metrics_pairs(opts))
-            .await
+        self.fetch_monitoring_json(
+            "/screenshot/monitoring/metrics",
+            &Self::build_metrics_pairs(opts),
+        )
+        .await
     }
 
+    /// Fetch per-target monitoring metrics for the Screenshot API.
     pub async fn get_screenshot_monitoring_target_metrics(
         &self,
         opts: &MonitoringTargetMetricsOptions,
@@ -316,14 +326,19 @@ impl Client {
 
     // ── Extraction API ───────────────────────────────────────────────
 
+    /// Fetch aggregate monitoring metrics for the Extraction API.
     pub async fn get_extraction_monitoring_metrics(
         &self,
         opts: &MonitoringMetricsOptions,
     ) -> Result<serde_json::Value, ScrapflyError> {
-        self.fetch_monitoring_json("/extraction/monitoring/metrics", &Self::build_metrics_pairs(opts))
-            .await
+        self.fetch_monitoring_json(
+            "/extraction/monitoring/metrics",
+            &Self::build_metrics_pairs(opts),
+        )
+        .await
     }
 
+    /// Fetch per-target monitoring metrics for the Extraction API.
     pub async fn get_extraction_monitoring_target_metrics(
         &self,
         opts: &MonitoringTargetMetricsOptions,
@@ -335,14 +350,19 @@ impl Client {
 
     // ── Crawler API ──────────────────────────────────────────────────
 
+    /// Fetch aggregate monitoring metrics for the Crawler API.
     pub async fn get_crawler_monitoring_metrics(
         &self,
         opts: &MonitoringMetricsOptions,
     ) -> Result<serde_json::Value, ScrapflyError> {
-        self.fetch_monitoring_json("/crawl/monitoring/metrics", &Self::build_metrics_pairs(opts))
-            .await
+        self.fetch_monitoring_json(
+            "/crawl/monitoring/metrics",
+            &Self::build_metrics_pairs(opts),
+        )
+        .await
     }
 
+    /// Fetch per-target monitoring metrics for the Crawler API.
     pub async fn get_crawler_monitoring_target_metrics(
         &self,
         opts: &MonitoringTargetMetricsOptions,
@@ -354,6 +374,7 @@ impl Client {
 
     // ── Cloud Browser API (session-based, distinct shape) ────────────
 
+    /// Fetch aggregate monitoring metrics for the Cloud Browser API.
     pub async fn get_browser_monitoring_metrics(
         &self,
         opts: &CloudBrowserMonitoringOptions,
@@ -363,6 +384,7 @@ impl Client {
             .await
     }
 
+    /// Fetch monitoring time-series for the Cloud Browser API.
     pub async fn get_browser_monitoring_timeseries(
         &self,
         opts: &CloudBrowserMonitoringOptions,

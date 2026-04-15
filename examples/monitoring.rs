@@ -23,7 +23,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("==== Account Metrics ====");
     println!(
         "{}",
-        serde_json::to_string_pretty(account_stats.get("account_metrics").unwrap_or(&account_stats))?
+        serde_json::to_string_pretty(
+            account_stats
+                .get("account_metrics")
+                .unwrap_or(&account_stats)
+        )?
     );
 
     let target_stats = client
@@ -33,6 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             period: Some(MonitoringPeriod::Last24h),
             start: None,
             end: None,
+            include_webhook: false,
         })
         .await?;
     println!("==== Target Metrics on httpbin.dev ====");
