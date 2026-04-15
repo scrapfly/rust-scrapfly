@@ -24,6 +24,7 @@ pub mod config;
 pub mod crawler;
 pub mod enums;
 pub mod error;
+pub mod monitoring;
 pub mod result;
 
 pub use client::{Client, ClientBuilder, OnRequest};
@@ -35,6 +36,10 @@ pub use config::screenshot::ScreenshotConfig;
 pub use crawler::{Crawl, WaitOptions};
 pub use enums::*;
 pub use error::{ApiError, ScrapflyError};
+pub use monitoring::{
+    CloudBrowserMonitoringOptions, MonitoringAggregation, MonitoringDataFormat,
+    MonitoringMetricsOptions, MonitoringPeriod, MonitoringTargetMetricsOptions,
+};
 pub use result::account::{AccountData, VerifyApiKeyResult};
 pub use result::crawler::{
     CrawlContent, CrawlerArtifact, CrawlerArtifactType, CrawlerContents, CrawlerStartResponse,

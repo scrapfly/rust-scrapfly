@@ -16,6 +16,10 @@ use crate::config::scrape::ScrapeConfig;
 use crate::config::screenshot::ScreenshotConfig;
 use crate::enums::HttpMethod;
 use crate::error::{from_response, parse_retry_after, ApiError, ScrapflyError};
+use crate::monitoring::{
+    CloudBrowserMonitoringOptions, MonitoringDataFormat, MonitoringMetricsOptions,
+    MonitoringTargetMetricsOptions,
+};
 use crate::result::account::{AccountData, VerifyApiKeyResult};
 use crate::result::crawler::{
     CrawlerArtifact, CrawlerArtifactType, CrawlerContents, CrawlerStartResponse, CrawlerStatus,
@@ -192,6 +196,206 @@ impl Client {
             return Err(from_response(status, &body, 0, false));
         }
         Ok(serde_json::from_slice(&body)?)
+    }
+
+    // ── Monitoring API (Enterprise+ plan only) ──────────────────────
+    // The Monitoring API exposes per-product aggregates and per-target
+    // timeseries. Web Scraping / Screenshot / Extraction / Crawler share
+    // one shape (request-based) but live under different URL prefixes;
+    // Cloud Browser is session-based and exposes a distinct shape.
+    // See <https://scrapfly.io/docs/monitoring#api>.
+
+    fn build_metrics_pairs(opts: &MonitoringMetricsOptions) -> Vec<(String, String)> {
+        let mut pairs: Vec<(String, String)> = Vec::new();
+        let format = opts.format.unwrap_or(MonitoringDataFormat::Structured);
+        pairs.push(("format".into(), format.as_str().into()));
+        if let Some(p) = opts.period {
+            pairs.push(("period".into(), p.as_str().into()));
+        }
+        if let Some(ref aggs) = opts.aggregation {
+            if !aggs.is_empty() {
+                let joined = aggs
+                    .iter()
+                    .map(|a| a.as_str())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                pairs.push(("aggregation".into(), joined));
+            }
+        }
+        if opts.include_webhook {
+            pairs.push(("include_webhook".into(), "true".into()));
+        }
+        pairs
+    }
+
+    fn build_target_pairs(
+        opts: &MonitoringTargetMetricsOptions,
+    ) -> Result<Vec<(String, String)>, ScrapflyError> {
+        if opts.domain.is_empty() {
+            return Err(ScrapflyError::Config(
+                "monitoring target metrics: domain is required".into(),
+            ));
+        }
+        if opts.start.is_some() != opts.end.is_some() {
+            return Err(ScrapflyError::Config(
+                "monitoring target metrics: start and end must be provided together".into(),
+            ));
+        }
+        let mut pairs: Vec<(String, String)> = Vec::new();
+        pairs.push(("domain".into(), opts.domain.clone()));
+        pairs.push(("group_subdomain".into(), opts.group_subdomain.to_string()));
+        match (&opts.start, &opts.end) {
+            (Some(s), Some(e)) => {
+                pairs.push(("start".into(), s.clone()));
+                pairs.push(("end".into(), e.clone()));
+            }
+            _ => {
+                let period = opts
+                    .period
+                    .unwrap_or(crate::monitoring::MonitoringPeriod::Last24h);
+                pairs.push(("period".into(), period.as_str().into()));
+            }
+        }
+        if opts.include_webhook {
+            pairs.push(("include_webhook".into(), "true".into()));
+        }
+        Ok(pairs)
+    }
+
+    async fn fetch_monitoring_json(
+        &self,
+        path: &str,
+        pairs: &[(String, String)],
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        let url = self.build_url(path, pairs)?;
+        let resp = self.send_simple(Method::GET, url, None, None).await?;
+        let (status, _headers, body) = read_response(resp).await?;
+        if status != 200 {
+            return Err(from_response(status, &body, 0, false));
+        }
+        Ok(serde_json::from_slice(&body)?)
+    }
+
+    // ── Web Scraping API ─────────────────────────────────────────────
+
+    pub async fn get_monitoring_metrics(
+        &self,
+        opts: &MonitoringMetricsOptions,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        self.fetch_monitoring_json("/scrape/monitoring/metrics", &Self::build_metrics_pairs(opts))
+            .await
+    }
+
+    pub async fn get_monitoring_target_metrics(
+        &self,
+        opts: &MonitoringTargetMetricsOptions,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        let pairs = Self::build_target_pairs(opts)?;
+        self.fetch_monitoring_json("/scrape/monitoring/metrics/target", &pairs)
+            .await
+    }
+
+    // ── Screenshot API ───────────────────────────────────────────────
+
+    pub async fn get_screenshot_monitoring_metrics(
+        &self,
+        opts: &MonitoringMetricsOptions,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        self.fetch_monitoring_json("/screenshot/monitoring/metrics", &Self::build_metrics_pairs(opts))
+            .await
+    }
+
+    pub async fn get_screenshot_monitoring_target_metrics(
+        &self,
+        opts: &MonitoringTargetMetricsOptions,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        let pairs = Self::build_target_pairs(opts)?;
+        self.fetch_monitoring_json("/screenshot/monitoring/metrics/target", &pairs)
+            .await
+    }
+
+    // ── Extraction API ───────────────────────────────────────────────
+
+    pub async fn get_extraction_monitoring_metrics(
+        &self,
+        opts: &MonitoringMetricsOptions,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        self.fetch_monitoring_json("/extraction/monitoring/metrics", &Self::build_metrics_pairs(opts))
+            .await
+    }
+
+    pub async fn get_extraction_monitoring_target_metrics(
+        &self,
+        opts: &MonitoringTargetMetricsOptions,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        let pairs = Self::build_target_pairs(opts)?;
+        self.fetch_monitoring_json("/extraction/monitoring/metrics/target", &pairs)
+            .await
+    }
+
+    // ── Crawler API ──────────────────────────────────────────────────
+
+    pub async fn get_crawler_monitoring_metrics(
+        &self,
+        opts: &MonitoringMetricsOptions,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        self.fetch_monitoring_json("/crawl/monitoring/metrics", &Self::build_metrics_pairs(opts))
+            .await
+    }
+
+    pub async fn get_crawler_monitoring_target_metrics(
+        &self,
+        opts: &MonitoringTargetMetricsOptions,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        let pairs = Self::build_target_pairs(opts)?;
+        self.fetch_monitoring_json("/crawl/monitoring/metrics/target", &pairs)
+            .await
+    }
+
+    // ── Cloud Browser API (session-based, distinct shape) ────────────
+
+    pub async fn get_browser_monitoring_metrics(
+        &self,
+        opts: &CloudBrowserMonitoringOptions,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        let pairs = Self::build_browser_pairs(opts)?;
+        self.fetch_monitoring_json("/browser/monitoring/metrics", &pairs)
+            .await
+    }
+
+    pub async fn get_browser_monitoring_timeseries(
+        &self,
+        opts: &CloudBrowserMonitoringOptions,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        let pairs = Self::build_browser_pairs(opts)?;
+        self.fetch_monitoring_json("/browser/monitoring/metrics/timeseries", &pairs)
+            .await
+    }
+
+    fn build_browser_pairs(
+        opts: &CloudBrowserMonitoringOptions,
+    ) -> Result<Vec<(String, String)>, ScrapflyError> {
+        if opts.start.is_some() != opts.end.is_some() {
+            return Err(ScrapflyError::Config(
+                "cloud browser monitoring: start and end must be provided together".into(),
+            ));
+        }
+        let mut pairs: Vec<(String, String)> = Vec::new();
+        match (&opts.start, &opts.end) {
+            (Some(s), Some(e)) => {
+                pairs.push(("start".into(), s.clone()));
+                pairs.push(("end".into(), e.clone()));
+            }
+            _ => {
+                if let Some(p) = opts.period {
+                    pairs.push(("period".into(), p.as_str().into()));
+                }
+            }
+        }
+        if let Some(ref pool) = opts.proxy_pool {
+            pairs.push(("proxy_pool".into(), pool.clone()));
+        }
+        Ok(pairs)
     }
 
     /// Scrape a URL.
