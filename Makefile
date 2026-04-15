@@ -32,6 +32,9 @@ generate-docs:
 release:
 	git branch | grep \* | cut -d ' ' -f2 | grep main || exit 1
 	git pull origin main
+	cargo fmt --all -- --check
+	cargo clippy --all-targets --all-features -- -D warnings
+	cargo test --all-features
 	$(MAKE) generate-docs
 	git add docs
 	-git commit -m "Update API documentation for version $(VERSION)"
