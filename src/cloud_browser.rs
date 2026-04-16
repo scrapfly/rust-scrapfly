@@ -59,6 +59,9 @@ pub struct BrowserConfig {
     /// BYOP proxy URL.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub byop_proxy: Option<String>,
+    /// Enable MCP (Model Context Protocol) support.
+    #[serde(skip_serializing_if = "is_false")]
+    pub enable_mcp: bool,
 }
 
 fn is_false(v: &bool) -> bool {
@@ -181,6 +184,9 @@ impl Client {
         }
         if let Some(v) = &config.byop_proxy {
             pairs.push(("byop_proxy".into(), v.clone()));
+        }
+        if config.enable_mcp {
+            pairs.push(("enable_mcp".into(), "true".into()));
         }
         let qs = serde_urlencoded::to_string(&pairs).unwrap_or_default();
         format!("{}?{}", ws_host, qs)
