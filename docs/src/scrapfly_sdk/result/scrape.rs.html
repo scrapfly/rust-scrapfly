@@ -101,7 +101,20 @@
 <a href="#100" id="100">100</a>
 <a href="#101" id="101">101</a>
 <a href="#102" id="102">102</a>
-<a href="#103" id="103">103</a></pre></div><pre class="rust"><code><span class="doccomment">//! Scrape result — port of `sdk/go/result_scrape.go`.
+<a href="#103" id="103">103</a>
+<a href="#104" id="104">104</a>
+<a href="#105" id="105">105</a>
+<a href="#106" id="106">106</a>
+<a href="#107" id="107">107</a>
+<a href="#108" id="108">108</a>
+<a href="#109" id="109">109</a>
+<a href="#110" id="110">110</a>
+<a href="#111" id="111">111</a>
+<a href="#112" id="112">112</a>
+<a href="#113" id="113">113</a>
+<a href="#114" id="114">114</a>
+<a href="#115" id="115">115</a>
+<a href="#116" id="116">116</a></pre></div><pre class="rust"><code><span class="doccomment">//! Scrape result — port of `sdk/go/result_scrape.go`.
 //!
 //! Only the fields a typical caller cares about are strongly typed; the
 //! rest land in `serde_json::Value` to survive API contract drift.
@@ -142,7 +155,7 @@
     </span><span class="attr">#[serde(default)]
     </span><span class="kw">pub </span>url: String,
     <span class="doccomment">/// HTTP status code from the target.
-    </span><span class="attr">#[serde(default)]
+    </span><span class="attr">#[serde(default, deserialize_with = <span class="string">"null_as_zero_u16"</span>)]
     </span><span class="kw">pub </span>status_code: u16,
     <span class="doccomment">/// Status string (`DONE`, etc.).
     </span><span class="attr">#[serde(default)]
@@ -192,7 +205,7 @@
     </span><span class="attr">#[serde(default)]
     </span><span class="kw">pub </span>code: String,
     <span class="doccomment">/// HTTP code.
-    </span><span class="attr">#[serde(default)]
+    </span><span class="attr">#[serde(default, deserialize_with = <span class="string">"null_as_zero_u16"</span>)]
     </span><span class="kw">pub </span>http_code: u16,
     <span class="doccomment">/// Error message.
     </span><span class="attr">#[serde(default)]
@@ -203,5 +216,18 @@
     <span class="doccomment">/// Retryable flag.
     </span><span class="attr">#[serde(default)]
     </span><span class="kw">pub </span>retryable: bool,
+}
+
+<span class="doccomment">/// Coerce JSON `null | absent | number` into a plain `u16`, where null and
+/// absent both collapse to zero. The server emits `status_code: null` and
+/// `http_code: null` on large-object (blob/clob) offload responses, where
+/// the real status lives in the signed-URL payload rather than the envelope.
+/// Without this, the plain `u16` deserializer rejects `null` and the SDK
+/// can't decode a successful large_object batch part.
+</span><span class="kw">fn </span>null_as_zero_u16&lt;<span class="lifetime">'de</span>, D&gt;(deserializer: D) -&gt; <span class="prelude-ty">Result</span>&lt;u16, D::Error&gt;
+<span class="kw">where
+    </span>D: serde::Deserializer&lt;<span class="lifetime">'de</span>&gt;,
+{
+    <span class="prelude-val">Ok</span>(<span class="prelude-ty">Option</span>::&lt;u16&gt;::deserialize(deserializer)<span class="question-mark">?</span>.unwrap_or(<span class="number">0</span>))
 }
 </code></pre></div></section></main></body></html>

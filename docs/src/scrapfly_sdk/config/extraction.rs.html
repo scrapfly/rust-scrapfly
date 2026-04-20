@@ -168,7 +168,8 @@
 <a href="#167" id="167">167</a>
 <a href="#168" id="168">168</a>
 <a href="#169" id="169">169</a>
-<a href="#170" id="170">170</a></pre></div><pre class="rust"><code><span class="doccomment">//! Extraction endpoint configuration — ported from `sdk/go/config_extraction.go`.
+<a href="#170" id="170">170</a>
+<a href="#171" id="171">171</a></pre></div><pre class="rust"><code><span class="doccomment">//! Extraction endpoint configuration — ported from `sdk/go/config_extraction.go`.
 
 </span><span class="kw">use </span><span class="kw">crate</span>::enums::{CompressionFormat, ExtractionModel};
 <span class="kw">use </span><span class="kw">crate</span>::error::ScrapflyError;
@@ -323,7 +324,8 @@
         <span class="self">self</span>.cfg.timeout = <span class="prelude-val">Some</span>(v);
         <span class="self">self
     </span>}
-    <span class="kw">pub fn </span>webhook(<span class="kw-2">mut </span><span class="self">self</span>, v: <span class="kw">impl </span>Into&lt;String&gt;) -&gt; <span class="self">Self </span>{
+    <span class="doccomment">/// Set webhook name for post-extraction notification.
+    </span><span class="kw">pub fn </span>webhook(<span class="kw-2">mut </span><span class="self">self</span>, v: <span class="kw">impl </span>Into&lt;String&gt;) -&gt; <span class="self">Self </span>{
         <span class="self">self</span>.cfg.webhook = <span class="prelude-val">Some</span>(v.into());
         <span class="self">self
     </span>}

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["BatchFormat","BatchOutcome"],"fn":["build_proxified_response","decode_part_body","parts_from_response"],"struct":["BatchOptions","BatchPart","BatchPartStream","BatchProxifiedResponse"]};

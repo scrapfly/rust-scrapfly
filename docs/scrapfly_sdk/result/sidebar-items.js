@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["account","crawler","extraction","scrape","screenshot"]};
+window.SIDEBAR_ITEMS = {"mod":["account","classify","crawler","extraction","scrape","screenshot"]};

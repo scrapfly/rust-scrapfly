@@ -549,7 +549,8 @@
 <a href="#548" id="548">548</a>
 <a href="#549" id="549">549</a>
 <a href="#550" id="550">550</a>
-<a href="#551" id="551">551</a></pre></div><pre class="rust"><code><span class="doccomment">//! Scrape endpoint configuration — ported from `sdk/go/config_scrape.go`.
+<a href="#551" id="551">551</a>
+<a href="#552" id="552">552</a></pre></div><pre class="rust"><code><span class="doccomment">//! Scrape endpoint configuration — ported from `sdk/go/config_scrape.go`.
 
 </span><span class="kw">use </span>std::collections::BTreeMap;
 
@@ -1073,7 +1074,8 @@
         <span class="self">self</span>.cfg.rendering_stage = <span class="prelude-val">Some</span>(v.into());
         <span class="self">self
     </span>}
-    <span class="kw">pub fn </span>proxified_response(<span class="kw-2">mut </span><span class="self">self</span>) -&gt; <span class="self">Self </span>{
+    <span class="doccomment">/// Enable proxified response mode (raw upstream pass-through).
+    </span><span class="kw">pub fn </span>proxified_response(<span class="kw-2">mut </span><span class="self">self</span>) -&gt; <span class="self">Self </span>{
         <span class="self">self</span>.cfg.proxified_response = <span class="bool-val">true</span>;
         <span class="self">self
     </span>}

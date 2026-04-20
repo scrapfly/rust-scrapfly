@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["MonitoringAggregation","MonitoringDataFormat","MonitoringPeriod"],"struct":["CloudBrowserMonitoringOptions","MonitoringMetricsOptions","MonitoringTargetMetricsOptions"]};
