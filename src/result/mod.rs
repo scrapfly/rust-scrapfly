@@ -4,6 +4,7 @@
 //! JS scenario output, arbitrary HTTP headers) are kept as `serde_json::Value`.
 
 pub mod account;
+pub mod classify;
 pub mod crawler;
 pub mod extraction;
 pub mod scrape;

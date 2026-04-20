@@ -14,9 +14,10 @@ categories = ["api-bindings", "web-programming"]
 
 [dependencies]
 tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "gzip"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "gzip", "zstd"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+rmp-serde = "1"
 serde_urlencoded = "0.7"
 thiserror = "1"
 base64 = "0.22"
@@ -46,3 +47,15 @@ path = "examples/extraction.rs"
 [[example]]
 name = "crawler_lifecycle"
 path = "examples/crawler_lifecycle.rs"
+
+[[example]]
+name = "batch_scrape"
+path = "examples/batch_scrape.rs"
+
+[[example]]
+name = "batch_scrape_proxified"
+path = "examples/batch_scrape_proxified.rs"
+
+[[example]]
+name = "batch_scrape_msgpack"
+path = "examples/batch_scrape_msgpack.rs"

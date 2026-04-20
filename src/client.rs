@@ -3,6 +3,7 @@
 //! Built on `reqwest` with `rustls`. Single shared [`reqwest::Client`]
 //! re-used across every call.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -21,6 +22,7 @@ use crate::monitoring::{
     MonitoringTargetMetricsOptions,
 };
 use crate::result::account::{AccountData, VerifyApiKeyResult};
+use crate::result::classify::{ClassifyRequest, ClassifyResult};
 use crate::result::crawler::{
     CrawlerArtifact, CrawlerArtifactType, CrawlerContents, CrawlerStartResponse, CrawlerStatus,
     CrawlerUrls,
@@ -196,6 +198,42 @@ impl Client {
             return Err(from_response(status, &body, 0, false));
         }
         Ok(serde_json::from_slice(&body)?)
+    }
+
+    /// Classify an already-fetched HTTP response for anti-bot blocking.
+    ///
+    /// Runs the same detection pipeline used by every live Scrapfly scrape
+    /// against a response you already have (from your own proxy, cache, etc).
+    /// 1 API credit per successful call. See
+    /// <https://scrapfly.io/docs/scrape-api/classify>.
+    pub async fn classify(&self, req: &ClassifyRequest) -> Result<ClassifyResult, ScrapflyError> {
+        if req.url.is_empty() {
+            return Err(ScrapflyError::Config("classify: url is required".into()));
+        }
+        if !(100..=599).contains(&req.status_code) {
+            return Err(ScrapflyError::Config(
+                "classify: status_code must be in [100, 599]".into(),
+            ));
+        }
+
+        let url = self.build_url("/classify", &[])?;
+        let body = serde_json::to_vec(req)
+            .map_err(|e| ScrapflyError::Config(format!("marshal classify request: {}", e)))?;
+
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+
+        let resp = self
+            .send_simple(Method::POST, url, Some(headers), Some(body))
+            .await?;
+        let (status, _headers, bytes) = read_response(resp).await?;
+        if status >= 400 {
+            return Err(from_response(status, &bytes, 0, false));
+        }
+        let out: ClassifyResult = serde_json::from_slice(&bytes)
+            .map_err(|e| ScrapflyError::Config(format!("decode classify response: {}", e)))?;
+        Ok(out)
     }
 
     // ── Monitoring API (Enterprise+ plan only) ──────────────────────
@@ -582,6 +620,161 @@ impl Client {
                 .map(move |cfg| async move { self.scrape(&cfg).await }),
         )
         .buffer_unordered(limit)
+    }
+
+    /// POST /scrape/batch: scrape up to 100 URLs and stream results
+    /// back as each scrape completes. Returns an async stream where
+    /// each item is `(correlation_id, Result<ScrapeResult, ScrapflyError>)`.
+    ///
+    /// Results arrive OUT OF ORDER — whichever scrape finishes first
+    /// is yielded first. Every `ScrapeConfig` MUST carry a unique
+    /// `correlation_id`; missing / duplicate values are caught
+    /// client-side before the request is sent.
+    ///
+    /// Batch-level failures (plan gate, insufficient concurrency,
+    /// validation) surface as the outer `Err(ScrapflyError)` returned
+    /// from the `await` — the stream is only created after the
+    /// batch request succeeds.
+    pub async fn scrape_batch(
+        &self,
+        configs: &[ScrapeConfig],
+    ) -> Result<
+        impl Stream<Item = (String, crate::batch::BatchOutcome)>,
+        ScrapflyError,
+    > {
+        self.scrape_batch_with_options(configs, crate::batch::BatchOptions::default())
+            .await
+    }
+
+    /// Like `scrape_batch` but with explicit `BatchOptions`
+    /// (msgpack wire format, etc.).
+    pub async fn scrape_batch_with_options(
+        &self,
+        configs: &[ScrapeConfig],
+        opts: crate::batch::BatchOptions,
+    ) -> Result<
+        impl Stream<Item = (String, crate::batch::BatchOutcome)>,
+        ScrapflyError,
+    > {
+        use crate::batch::{build_proxified_response, decode_part_body, parts_from_response, BatchOutcome};
+
+        if configs.is_empty() {
+            return Err(ScrapflyError::Config(
+                "scrape_batch: configs is empty".into(),
+            ));
+        }
+
+        if configs.len() > 100 {
+            return Err(ScrapflyError::Config(format!(
+                "scrape_batch: max 100 configs per batch (got {})",
+                configs.len()
+            )));
+        }
+
+        let mut seen: HashMap<String, usize> = HashMap::new();
+        let mut body_configs: Vec<HashMap<String, String>> = Vec::with_capacity(configs.len());
+
+        for (i, cfg) in configs.iter().enumerate() {
+            let correlation_id = cfg.correlation_id.clone().ok_or_else(|| {
+                ScrapflyError::Config(format!(
+                    "scrape_batch: configs[{}] is missing correlation_id (required for matching streamed parts)",
+                    i
+                ))
+            })?;
+
+            if let Some(prev) = seen.get(&correlation_id) {
+                return Err(ScrapflyError::Config(format!(
+                    "scrape_batch: correlation_id {:?} reused by configs[{}] and configs[{}]",
+                    correlation_id, prev, i
+                )));
+            }
+
+            seen.insert(correlation_id.clone(), i);
+
+            let pairs = cfg.to_query_pairs()?;
+            let mut entry: HashMap<String, String> = HashMap::with_capacity(pairs.len());
+
+            for (k, v) in pairs {
+                if k == "key" {
+                    continue;
+                }
+
+                entry.insert(k, v);
+            }
+
+            body_configs.push(entry);
+        }
+
+        let body = serde_json::json!({ "configs": body_configs });
+        let body_bytes = serde_json::to_vec(&body)?;
+
+        let mut url = Url::parse(&self.host)
+            .map_err(|e| ScrapflyError::Config(format!("invalid host: {}", e)))?;
+        url.set_path("/scrape/batch");
+        url.query_pairs_mut().append_pair("key", &self.key);
+
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        headers.insert(
+            ACCEPT,
+            HeaderValue::from_static(opts.format.accept_header()),
+        );
+        headers.insert(USER_AGENT, HeaderValue::from_static(SDK_USER_AGENT));
+
+        let method = Method::POST;
+
+        if let Some(cb) = &self.on_request {
+            cb(&method, &url, &headers);
+        }
+
+        let resp = self
+            .http
+            .request(method, url)
+            .headers(headers)
+            .body(body_bytes)
+            .send()
+            .await
+            .map_err(|e| ScrapflyError::Config(format!("scrape_batch: send: {}", e)))?;
+
+        let status = resp.status().as_u16();
+
+        if status != 200 {
+            let body_bytes = resp.bytes().await.unwrap_or_default();
+
+            return Err(from_response(status, &body_bytes, 0, false));
+        }
+
+        let parts_stream = parts_from_response(resp)?;
+
+        Ok(parts_stream.map(|part_r| match part_r {
+            Ok(part) => {
+                let correlation_id = part
+                    .headers
+                    .get("x-scrapfly-correlation-id")
+                    .cloned()
+                    .unwrap_or_default();
+
+                // Proxified-response parts: the part body is the raw
+                // upstream bytes, not a JSON envelope. Surface as a
+                // BatchProxifiedResponse rather than attempting to
+                // decode the body as JSON.
+                if part
+                    .headers
+                    .get("x-scrapfly-proxified")
+                    .map(|v| v == "true")
+                    .unwrap_or(false)
+                {
+                    let prox = build_proxified_response(part);
+                    return (correlation_id, BatchOutcome::Proxified(prox));
+                }
+
+                match decode_part_body::<ScrapeResult>(&part) {
+                    Ok(r) => (correlation_id, BatchOutcome::Scrape(r)),
+                    Err(e) => (correlation_id, BatchOutcome::Err(e)),
+                }
+            }
+            Err(e) => (String::new(), BatchOutcome::Err(e)),
+        }))
     }
 
     /// Scrape a URL with `proxified_response=true`, returning the raw

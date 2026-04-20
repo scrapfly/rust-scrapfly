@@ -18,6 +18,7 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod batch;
 pub mod client;
 pub mod cloud_browser;
 pub mod config;

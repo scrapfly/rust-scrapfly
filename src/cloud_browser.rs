@@ -116,6 +116,9 @@ pub struct UnblockConfig {
     /// Browser session timeout.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub browser_timeout: Option<u32>,
+    /// Enable MCP support in the browser.
+    #[serde(skip_serializing_if = "is_false")]
+    pub enable_mcp: bool,
 }
 
 /// Response from `POST /unblock`.
@@ -130,6 +133,9 @@ pub struct UnblockResult {
     /// Run id.
     #[serde(default)]
     pub run_id: String,
+    /// MCP endpoint (only when enable_mcp was set).
+    #[serde(default)]
+    pub mcp_endpoint: String,
 }
 
 impl Client {
