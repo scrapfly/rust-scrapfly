@@ -30,7 +30,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = client
         .scrape_batch_with_options(
             &configs,
-            BatchOptions { format: BatchFormat::Msgpack },
+            BatchOptions {
+                format: BatchFormat::Msgpack,
+            },
         )
         .await?;
 
