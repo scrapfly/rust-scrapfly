@@ -638,10 +638,7 @@ impl Client {
     pub async fn scrape_batch(
         &self,
         configs: &[ScrapeConfig],
-    ) -> Result<
-        impl Stream<Item = (String, crate::batch::BatchOutcome)>,
-        ScrapflyError,
-    > {
+    ) -> Result<impl Stream<Item = (String, crate::batch::BatchOutcome)>, ScrapflyError> {
         self.scrape_batch_with_options(configs, crate::batch::BatchOptions::default())
             .await
     }
@@ -652,11 +649,10 @@ impl Client {
         &self,
         configs: &[ScrapeConfig],
         opts: crate::batch::BatchOptions,
-    ) -> Result<
-        impl Stream<Item = (String, crate::batch::BatchOutcome)>,
-        ScrapflyError,
-    > {
-        use crate::batch::{build_proxified_response, decode_part_body, parts_from_response, BatchOutcome};
+    ) -> Result<impl Stream<Item = (String, crate::batch::BatchOutcome)>, ScrapflyError> {
+        use crate::batch::{
+            build_proxified_response, decode_part_body, parts_from_response, BatchOutcome,
+        };
 
         if configs.is_empty() {
             return Err(ScrapflyError::Config(
