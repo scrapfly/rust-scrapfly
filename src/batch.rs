@@ -101,6 +101,13 @@ pub struct BatchOptions {
 }
 
 /// Per-part outcome yielded by `Client::scrape_batch`.
+///
+/// NOTE on `clippy::large_enum_variant`: the `Scrape(ScrapeResult)` variant is
+/// ~528 bytes vs. ~120 bytes for the others. Boxing to shrink it would be a
+/// breaking change to v0.2.x consumers pattern-matching on `BatchOutcome::Scrape`.
+/// We accept the unbalanced size — each enum instance is ephemeral (yielded
+/// once per batch part via a stream) and count tops out at the batch size.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum BatchOutcome {
     /// Standard per-part scrape result (JSON envelope decoded).

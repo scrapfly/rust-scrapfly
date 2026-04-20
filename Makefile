@@ -40,9 +40,16 @@ release:
 	-git commit -m "Update API documentation for version $(VERSION)"
 	-git push origin main
 	cargo publish --dry-run
-	git tag -a $(VERSION) -m "Version $(VERSION)"
-	git push --tags
-	cargo publish
+	@# Tag format: v$(VERSION). The release.yml GitHub Action triggers on
+	@# `tags: v*` — a bare `$(VERSION)` tag (no v prefix) is silently ignored
+	@# by the workflow, so cargo publish never runs. Matches historical tags
+	@# v0.1.1 / v0.2.1 that worked.
+	git tag -a v$(VERSION) -m "Version $(VERSION)"
+	@# Push ONLY the new tag, not --tags (avoids pushing stale local tags).
+	@# cargo publish is handled by the release.yml workflow that fires on the
+	@# pushed v-tag; local cargo publish is removed because it needs
+	@# CARGO_REGISTRY_TOKEN which lives in CI, not on dev machines.
+	git push origin v$(VERSION)
 	$(MAKE) bump VERSION=$(NEXT_VERSION)
 
 fmt:
