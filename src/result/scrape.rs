@@ -39,7 +39,7 @@ pub struct ResultData {
     #[serde(default)]
     pub url: String,
     /// HTTP status code from the target.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_zero_u16")]
     pub status_code: u16,
     /// Status string (`DONE`, etc.).
     #[serde(default)]
@@ -89,7 +89,7 @@ pub struct ScrapeErrorDetails {
     #[serde(default)]
     pub code: String,
     /// HTTP code.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_zero_u16")]
     pub http_code: u16,
     /// Error message.
     #[serde(default)]
@@ -100,4 +100,17 @@ pub struct ScrapeErrorDetails {
     /// Retryable flag.
     #[serde(default)]
     pub retryable: bool,
+}
+
+/// Coerce JSON `null | absent | number` into a plain `u16`, where null and
+/// absent both collapse to zero. The server emits `status_code: null` and
+/// `http_code: null` on large-object (blob/clob) offload responses, where
+/// the real status lives in the signed-URL payload rather than the envelope.
+/// Without this, the plain `u16` deserializer rejects `null` and the SDK
+/// can't decode a successful large_object batch part.
+fn null_as_zero_u16<'de, D>(deserializer: D) -> Result<u16, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<u16>::deserialize(deserializer)?.unwrap_or(0))
 }
