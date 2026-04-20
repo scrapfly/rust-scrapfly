@@ -126,13 +126,7 @@ fn find_subslice(buf: &[u8], needle: &[u8]) -> Option<usize> {
         return None;
     }
 
-    for i in 0..=buf.len() - needle.len() {
-        if &buf[i..i + needle.len()] == needle {
-            return Some(i);
-        }
-    }
-
-    None
+    (0..=buf.len() - needle.len()).find(|&i| &buf[i..i + needle.len()] == needle)
 }
 
 fn parse_content_type(value: &str) -> (String, HashMap<String, String>) {
@@ -438,9 +432,8 @@ pub fn build_proxified_response(part: BatchPart) -> BatchProxifiedResponse {
     for (key, value) in &part.headers {
         if key == "content-type" {
             out_headers.insert("content-type".into(), value.clone());
-        } else if key.starts_with(UPSTREAM_PREFIX) {
-            let stripped = key[UPSTREAM_PREFIX.len()..].to_string();
-            out_headers.insert(stripped, value.clone());
+        } else if let Some(stripped) = key.strip_prefix(UPSTREAM_PREFIX) {
+            out_headers.insert(stripped.to_string(), value.clone());
         } else if key.starts_with("x-scrapfly-") {
             out_headers.insert(key.clone(), value.clone());
         }
@@ -463,7 +456,9 @@ pub fn build_proxified_response(part: BatchPart) -> BatchProxifiedResponse {
 
 /// Decode a part body according to its Content-Type. Supports
 /// `application/json` (default) and `application/msgpack`.
-pub fn decode_part_body<T: serde::de::DeserializeOwned>(part: &BatchPart) -> Result<T, ScrapflyError> {
+pub fn decode_part_body<T: serde::de::DeserializeOwned>(
+    part: &BatchPart,
+) -> Result<T, ScrapflyError> {
     let ct = part
         .headers
         .get("content-type")
@@ -486,4 +481,3 @@ pub fn decode_part_body<T: serde::de::DeserializeOwned>(part: &BatchPart) -> Res
         ct
     )))
 }
-
