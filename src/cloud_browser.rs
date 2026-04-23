@@ -62,6 +62,12 @@ pub struct BrowserConfig {
     /// Enable MCP (Model Context Protocol) support.
     #[serde(skip_serializing_if = "is_false")]
     pub enable_mcp: bool,
+    /// Arm Scrapium's built-in captcha detector + solver on the first page attach.
+    /// Turnstile, DataDome slider, reCAPTCHA, GeeTest, PerimeterX hold, and
+    /// puzzle captchas are handled automatically. Billed per solve; failures
+    /// cost nothing. See <https://scrapfly.io/docs/cloud-browser-api/captcha-solver>.
+    #[serde(skip_serializing_if = "is_false")]
+    pub solve_captcha: bool,
 }
 
 fn is_false(v: &bool) -> bool {
@@ -119,6 +125,9 @@ pub struct UnblockConfig {
     /// Enable MCP support in the browser.
     #[serde(skip_serializing_if = "is_false")]
     pub enable_mcp: bool,
+    /// Arm the captcha solver on the post-unblock session.
+    #[serde(skip_serializing_if = "is_false")]
+    pub solve_captcha: bool,
 }
 
 /// Response from `POST /unblock`.
@@ -193,6 +202,9 @@ impl Client {
         }
         if config.enable_mcp {
             pairs.push(("enable_mcp".into(), "true".into()));
+        }
+        if config.solve_captcha {
+            pairs.push(("solve_captcha".into(), "true".into()));
         }
         let qs = serde_urlencoded::to_string(&pairs).unwrap_or_default();
         format!("{}?{}", ws_host, qs)
