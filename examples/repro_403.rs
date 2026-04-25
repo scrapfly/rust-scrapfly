@@ -3,8 +3,8 @@ use scrapfly_sdk::{Client, ScrapeConfig, ScrapflyError};
 #[tokio::main]
 async fn main() {
     let client = Client::builder()
-        .api_key("scp-live-d8ac176c2f9d48b993b58675bdf71615")
-        .host("https://api.scrapfly.home")
+        .api_key("scp-live-YOUR_API_KEY_HERE")
+        .host("https://api.scrapfly.local")
         .danger_accept_invalid_certs(true)
         .build()
         .unwrap();
