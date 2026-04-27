@@ -167,6 +167,29 @@ impl Client {
     }
 
     /// Build a URL by joining `path` onto the configured host.
+    /// Crate-internal shim over `build_url`, used by `schedule.rs` to share
+    /// the same auth + host wiring as the rest of the SDK without exposing
+    /// the helper publicly.
+    pub(crate) fn build_url_public(
+        &self,
+        path: &str,
+        query: &[(String, String)],
+    ) -> Result<Url, ScrapflyError> {
+        self.build_url(path, query)
+    }
+
+    /// Crate-internal shim over `send_simple` — same rationale as
+    /// `build_url_public`.
+    pub(crate) async fn send_simple_public(
+        &self,
+        method: Method,
+        url: Url,
+        headers: Option<HeaderMap>,
+        body: Option<Vec<u8>>,
+    ) -> Result<Response, ScrapflyError> {
+        self.send_simple(method, url, headers, body).await
+    }
+
     fn build_url(&self, path: &str, query: &[(String, String)]) -> Result<Url, ScrapflyError> {
         let mut u = Url::parse(&format!("{}{}", self.host, path))
             .map_err(|e| ScrapflyError::Config(format!("invalid url: {}", e)))?;

@@ -27,8 +27,13 @@ pub mod enums;
 pub mod error;
 pub mod monitoring;
 pub mod result;
+pub mod schedule;
 
 pub use client::{Client, ClientBuilder, OnRequest};
+pub use schedule::{
+    CreateScheduleRequest, ListSchedulesOptions, Schedule, ScheduleEnd, ScheduleRecurrence,
+    UpdateScheduleRequest,
+};
 pub use cloud_browser::{BrowserConfig, UnblockConfig, UnblockResult};
 pub use config::crawler::CrawlerConfig;
 pub use config::extraction::ExtractionConfig;

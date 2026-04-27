@@ -129,7 +129,10 @@ pub enum ScrapflyError {
 struct ErrorEnvelope {
     #[serde(default)]
     message: String,
-    #[serde(default)]
+    // The legacy /scrape envelope uses `code`; the public /schedules
+    // envelope uses `error`. Accept either spelling so a single
+    // ErrorEnvelope handles both shapes.
+    #[serde(default, alias = "error")]
     code: String,
     #[serde(default)]
     #[allow(dead_code)]
@@ -165,6 +168,15 @@ pub fn from_response(
         hint: String::new(),
         retry_after_ms,
     };
+
+    // ERR::SCHEDULER::* takes precedence over the generic 429/422 dispatch
+    // below so a 429 from a quota-exhausted schedule create surfaces as
+    // ScheduleFailed (resource-typed) rather than the generic
+    // TooManyRequests variant. Same rule for any future SCHEDULE error
+    // that overlaps with a status-typed bucket.
+    if envelope.code.contains("::SCHEDULE::") {
+        return ScrapflyError::ScheduleFailed(err);
+    }
 
     // HTTP-status-based hint + early dispatch.
     match status {
