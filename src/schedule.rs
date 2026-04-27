@@ -17,10 +17,13 @@ use crate::error::{from_response, ScrapflyError};
 /// Bounds a recurring schedule by either a date or a fire count.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ScheduleEnd {
+    /// End mode: `"date"` (stop at `date`) or `"count"` (stop after `count` fires).
     #[serde(rename = "type")]
-    pub kind: String, // "date" | "count"
+    pub kind: String,
+    /// ISO8601 datetime at which the schedule stops firing (when `kind == "date"`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub date: Option<String>,
+    /// Number of remaining fires before the schedule stops (when `kind == "count"`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub count: Option<i64>,
 }
@@ -29,14 +32,19 @@ pub struct ScheduleEnd {
 /// `interval` + `unit` drive the cadence.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ScheduleRecurrence {
+    /// Cron expression evaluated in UTC. Wins over `interval`/`unit` when set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cron: Option<String>,
+    /// Numeric component of the cadence (e.g. `5` for "every 5 minutes").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub interval: Option<i64>,
+    /// Cadence unit: `"minute" | "hour" | "day" | "week" | "month"`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub unit: Option<String>, // "minute" | "hour" | "day" | "week" | "month"
+    pub unit: Option<String>,
+    /// Optional weekday filter (e.g. `["mon", "wed", "fri"]`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub days: Option<Vec<String>>,
+    /// Optional end-of-recurrence condition.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ends: Option<ScheduleEnd>,
 }
@@ -45,15 +53,22 @@ pub struct ScheduleRecurrence {
 /// config is supplied as a separate argument.
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct CreateScheduleRequest {
+    /// Name of the webhook to deliver each fire's result to.
     pub webhook_name: String,
+    /// Recurring cadence. Mutually exclusive with `scheduled_date` (one-shot).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recurrence: Option<ScheduleRecurrence>,
+    /// One-shot fire datetime (ISO8601). Mutually exclusive with `recurrence`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scheduled_date: Option<String>,
+    /// When true, multiple fires of the same schedule may run concurrently.
     pub allow_concurrency: bool,
+    /// When true, failed fires are retried up to `max_retries` times.
     pub retry_on_failure: bool,
+    /// Cap on retries per fire when `retry_on_failure` is set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_retries: Option<i64>,
+    /// Free-form description shown on the dashboard.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
 }
@@ -61,22 +76,31 @@ pub struct CreateScheduleRequest {
 /// PATCH payload. Only fields explicitly set are forwarded.
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct UpdateScheduleRequest {
+    /// Replace the recurrence cadence.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recurrence: Option<ScheduleRecurrence>,
+    /// Replace the one-shot fire datetime.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scheduled_date: Option<String>,
+    /// Replace the concurrency flag.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub allow_concurrency: Option<bool>,
+    /// Replace the retry-on-failure flag.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_on_failure: Option<bool>,
+    /// Replace the per-fire retry cap.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_retries: Option<i64>,
+    /// Replace the dashboard notes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// Replace the scrape config (only valid for scrape schedules).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scrape_config: Option<HashMap<String, Value>>,
+    /// Replace the screenshot config (only valid for screenshot schedules).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub screenshot_config: Option<HashMap<String, Value>>,
+    /// Replace the crawler config (only valid for crawler schedules).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub crawler_config: Option<HashMap<String, Value>>,
 }
@@ -84,39 +108,60 @@ pub struct UpdateScheduleRequest {
 /// Server-side schedule record. Returned by every read or mutation endpoint.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Schedule {
+    /// Server-issued schedule UUID.
     pub id: String,
+    /// Kind of the underlying job: `"scrape" | "screenshot" | "crawler"`.
     pub kind: String,
+    /// Lifecycle status: `"ACTIVE" | "PAUSED" | "CANCELLED"`.
     pub status: String,
+    /// ISO8601 datetime of the next planned fire (recurring schedules).
     #[serde(default)]
     pub next_scheduled_date: Option<String>,
+    /// ISO8601 datetime of the one-shot fire (one-shot schedules).
     #[serde(default)]
     pub scheduled_date: Option<String>,
+    /// Recurrence cadence for recurring schedules.
     #[serde(default)]
     pub recurrence: Option<ScheduleRecurrence>,
+    /// Free-form server-side metadata bag.
     #[serde(default)]
     pub metadata: Option<HashMap<String, Value>>,
+    /// Free-form notes attached at create / update time.
     #[serde(default)]
     pub notes: Option<String>,
+    /// User UUID that authored the schedule.
     #[serde(default)]
     pub created_by: Option<String>,
+    /// ISO8601 datetime of creation.
     pub created_at: String,
+    /// ISO8601 datetime of the last update.
     pub updated_at: String,
+    /// ISO8601 datetime of cancellation (set when `status == "CANCELLED"`).
     #[serde(default)]
     pub cancelled_at: Option<String>,
+    /// Whether overlapping fires are permitted.
     pub allow_concurrency: bool,
+    /// Whether failed fires are retried.
     pub retry_on_failure: bool,
+    /// Per-fire retry cap when `retry_on_failure` is set.
     pub max_retries: i64,
+    /// UUID of the webhook receiving each fire's result.
     #[serde(default)]
     pub webhook_uuid: Option<String>,
+    /// UUID of the owning user.
     #[serde(default)]
     pub user_uuid: Option<String>,
+    /// Consecutive failure counter (auto-cancels after a server-defined cap).
     #[serde(default)]
     pub consecutive_failures: Option<i64>,
 }
 
+/// Optional filters for [`Client::list_schedules`].
 #[derive(Debug, Clone, Default)]
 pub struct ListSchedulesOptions {
+    /// Restrict to a single status (`"ACTIVE" | "PAUSED" | "CANCELLED"`).
     pub status: Option<String>,
+    /// Restrict to a single kind (`"scrape" | "screenshot" | "crawler"`).
     pub kind: Option<String>,
 }
 
@@ -176,6 +221,7 @@ impl Client {
         self.list_schedules_inner("/schedules", opts).await
     }
 
+    /// List scrape schedules, optionally filtered by `status`.
     pub async fn list_scrape_schedules(
         &self,
         status: Option<&str>,
@@ -192,6 +238,7 @@ impl Client {
         .await
     }
 
+    /// List screenshot schedules, optionally filtered by `status`.
     pub async fn list_screenshot_schedules(
         &self,
         status: Option<&str>,
@@ -208,6 +255,7 @@ impl Client {
         .await
     }
 
+    /// List crawler schedules, optionally filtered by `status`.
     pub async fn list_crawler_schedules(
         &self,
         status: Option<&str>,
@@ -243,12 +291,14 @@ impl Client {
             .await
     }
 
+    /// Pause an active schedule. Idempotent on already-paused schedules.
     pub async fn pause_schedule(&self, id: &str) -> Result<Schedule, ScrapflyError> {
         let path = format!("/schedules/{}/pause", url_path_escape(id));
         self.schedule_request_json::<Schedule>(Method::POST, &path, &[], None)
             .await
     }
 
+    /// Resume a paused schedule. Idempotent on already-active schedules.
     pub async fn resume_schedule(&self, id: &str) -> Result<Schedule, ScrapflyError> {
         let path = format!("/schedules/{}/resume", url_path_escape(id));
         self.schedule_request_json::<Schedule>(Method::POST, &path, &[], None)
