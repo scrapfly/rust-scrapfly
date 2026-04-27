@@ -182,11 +182,12 @@ impl Client {
     ) -> Result<Vec<Schedule>, ScrapflyError> {
         self.list_schedules_inner(
             "/scrape/schedules",
-            status.map(|s| ListSchedulesOptions {
-                status: Some(s.into()),
-                kind: None,
-            })
-            .as_ref(),
+            status
+                .map(|s| ListSchedulesOptions {
+                    status: Some(s.into()),
+                    kind: None,
+                })
+                .as_ref(),
         )
         .await
     }
@@ -197,11 +198,12 @@ impl Client {
     ) -> Result<Vec<Schedule>, ScrapflyError> {
         self.list_schedules_inner(
             "/screenshot/schedules",
-            status.map(|s| ListSchedulesOptions {
-                status: Some(s.into()),
-                kind: None,
-            })
-            .as_ref(),
+            status
+                .map(|s| ListSchedulesOptions {
+                    status: Some(s.into()),
+                    kind: None,
+                })
+                .as_ref(),
         )
         .await
     }
@@ -212,11 +214,12 @@ impl Client {
     ) -> Result<Vec<Schedule>, ScrapflyError> {
         self.list_schedules_inner(
             "/crawl/schedules",
-            status.map(|s| ListSchedulesOptions {
-                status: Some(s.into()),
-                kind: None,
-            })
-            .as_ref(),
+            status
+                .map(|s| ListSchedulesOptions {
+                    status: Some(s.into()),
+                    kind: None,
+                })
+                .as_ref(),
         )
         .await
     }
@@ -270,9 +273,18 @@ impl Client {
     ) -> Result<Schedule, ScrapflyError> {
         let mut body = serde_json::Map::new();
         body.insert(config_key.to_string(), Value::Object(map_to_object(config)));
-        body.insert("webhook_name".into(), Value::String(request.webhook_name.clone()));
-        body.insert("allow_concurrency".into(), Value::Bool(request.allow_concurrency));
-        body.insert("retry_on_failure".into(), Value::Bool(request.retry_on_failure));
+        body.insert(
+            "webhook_name".into(),
+            Value::String(request.webhook_name.clone()),
+        );
+        body.insert(
+            "allow_concurrency".into(),
+            Value::Bool(request.allow_concurrency),
+        );
+        body.insert(
+            "retry_on_failure".into(),
+            Value::Bool(request.retry_on_failure),
+        );
         if let Some(rec) = &request.recurrence {
             body.insert("recurrence".into(), serde_json::to_value(rec)?);
         }
@@ -360,7 +372,9 @@ impl Client {
                 reqwest::header::HeaderValue::from_static("application/json"),
             );
         }
-        let resp = self.send_simple_public(method, url, Some(headers), body).await?;
+        let resp = self
+            .send_simple_public(method, url, Some(headers), body)
+            .await?;
         let status = resp.status().as_u16();
         let bytes = resp.bytes().await.map_err(ScrapflyError::Transport)?;
         Ok((status, bytes))
@@ -370,7 +384,6 @@ impl Client {
 fn map_to_object(map: HashMap<String, Value>) -> serde_json::Map<String, Value> {
     map.into_iter().collect()
 }
-
 
 // url_path_escape is a minimal percent-encoder for path segments. We escape
 // the chars that would corrupt a URL (`/?#`, whitespace, control chars).

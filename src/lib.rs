@@ -30,10 +30,6 @@ pub mod result;
 pub mod schedule;
 
 pub use client::{Client, ClientBuilder, OnRequest};
-pub use schedule::{
-    CreateScheduleRequest, ListSchedulesOptions, Schedule, ScheduleEnd, ScheduleRecurrence,
-    UpdateScheduleRequest,
-};
 pub use cloud_browser::{BrowserConfig, UnblockConfig, UnblockResult};
 pub use config::crawler::CrawlerConfig;
 pub use config::extraction::ExtractionConfig;
@@ -54,3 +50,7 @@ pub use result::crawler::{
 pub use result::extraction::ExtractionResult;
 pub use result::scrape::ScrapeResult;
 pub use result::screenshot::{ScreenshotMetadata, ScreenshotResult};
+pub use schedule::{
+    CreateScheduleRequest, ListSchedulesOptions, Schedule, ScheduleEnd, ScheduleRecurrence,
+    UpdateScheduleRequest,
+};
