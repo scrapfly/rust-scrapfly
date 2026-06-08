@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["BrowserConfig","UnblockConfig","UnblockResult"]};
+window.SIDEBAR_ITEMS = {"fn":["project_salt"],"struct":["BrowserConfig","UnblockConfig","UnblockResult"]};
