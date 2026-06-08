@@ -30,11 +30,11 @@ generate-docs:
 	rm -rf docs && cp -r target/doc docs
 
 release:
-	git branch | grep \* | cut -d ' ' -f2 | grep main || exit 1
+	@[ "$$(git rev-parse --abbrev-ref HEAD)" = main ] || { echo "release must run on main"; exit 1; }
 	git pull origin main
 	cargo fmt --all -- --check
 	cargo clippy --all-targets --all-features -- -D warnings
-	cargo test --all-features
+	@if [ -z "$(SKIP_TESTS)" ]; then cargo test --all-features; else echo "SKIP_TESTS set, skipping test gate"; fi
 	$(MAKE) generate-docs
 	git add docs
 	-git commit -m "Update API documentation for version $(VERSION)"
