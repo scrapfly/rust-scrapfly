@@ -965,8 +965,9 @@ impl Client {
             let (mp_body, ct) = config.to_multipart_body()?;
             headers.insert(
                 CONTENT_TYPE,
-                HeaderValue::from_str(&ct)
-                    .map_err(|e| ScrapflyError::Config(format!("invalid multipart content-type: {e}")))?,
+                HeaderValue::from_str(&ct).map_err(|e| {
+                    ScrapflyError::Config(format!("invalid multipart content-type: {e}"))
+                })?,
             );
             mp_body
         } else {

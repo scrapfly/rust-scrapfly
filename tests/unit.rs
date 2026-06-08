@@ -172,7 +172,10 @@ fn session_sticky_proxy_false_is_sent() {
         .expect("build");
     let pairs = cfg.to_query_pairs().expect("pairs");
     let as_map: std::collections::HashMap<_, _> = pairs.iter().cloned().collect();
-    assert_eq!(as_map.get("session_sticky_proxy"), Some(&"false".to_string()));
+    assert_eq!(
+        as_map.get("session_sticky_proxy"),
+        Some(&"false".to_string())
+    );
 }
 
 #[test]
@@ -184,7 +187,10 @@ fn session_sticky_proxy_true_is_sent() {
         .expect("build");
     let pairs = cfg.to_query_pairs().expect("pairs");
     let as_map: std::collections::HashMap<_, _> = pairs.iter().cloned().collect();
-    assert_eq!(as_map.get("session_sticky_proxy"), Some(&"true".to_string()));
+    assert_eq!(
+        as_map.get("session_sticky_proxy"),
+        Some(&"true".to_string())
+    );
 }
 
 #[test]
@@ -197,7 +203,10 @@ fn session_sticky_proxy_default_is_true() {
         .expect("build");
     let pairs = cfg.to_query_pairs().expect("pairs");
     let as_map: std::collections::HashMap<_, _> = pairs.iter().cloned().collect();
-    assert_eq!(as_map.get("session_sticky_proxy"), Some(&"true".to_string()));
+    assert_eq!(
+        as_map.get("session_sticky_proxy"),
+        Some(&"true".to_string())
+    );
 }
 
 #[test]

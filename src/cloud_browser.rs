@@ -807,7 +807,10 @@ impl Client {
         let deadline = std::time::Instant::now() + timeout;
         loop {
             let playback = self.cloud_browser_playback(run_id).await?;
-            let status = playback.get("status").and_then(|v| v.as_str()).unwrap_or("");
+            let status = playback
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             if status != "uploading" {
                 return Ok(playback);
             }

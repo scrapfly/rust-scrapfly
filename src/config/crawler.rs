@@ -147,7 +147,9 @@ impl CrawlerConfig {
     /// Start a builder for an explicit `url_list` (no discovery). The SDK
     /// will post this configuration as multipart/form-data so the URLs are
     /// uploaded as a streamed file payload.
-    pub fn builder_url_list(urls: impl IntoIterator<Item = impl Into<String>>) -> CrawlerConfigBuilder {
+    pub fn builder_url_list(
+        urls: impl IntoIterator<Item = impl Into<String>>,
+    ) -> CrawlerConfigBuilder {
         CrawlerConfigBuilder {
             cfg: CrawlerConfig {
                 url_list: urls.into_iter().map(Into::into).collect(),
