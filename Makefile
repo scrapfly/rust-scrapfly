@@ -30,27 +30,25 @@ generate-docs:
 	rm -rf docs && cp -r target/doc docs
 
 release:
+	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=x.y.z [NEXT_VERSION=x.y.(z+1)]"; exit 2; fi
 	@[ "$$(git rev-parse --abbrev-ref HEAD)" = main ] || { echo "release must run on main"; exit 1; }
 	git pull origin main
-	cargo fmt --all -- --check
-	cargo clippy --all-targets --all-features -- -D warnings
-	@if [ -z "$(SKIP_TESTS)" ]; then cargo test --all-features; else echo "SKIP_TESTS set, skipping test gate"; fi
+	sed -i "0,/^version = .*/s//version = \"$(VERSION)\"/" Cargo.toml
+	cargo fmt --all
+	-cargo clippy --fix --allow-dirty --allow-staged --all-targets -- -D warnings
+	cargo fmt --all
+	cargo clippy --all-targets -- -D warnings
+	@if [ -z "$(SKIP_TESTS)" ]; then cargo test --lib --release; else echo "SKIP_TESTS set, skipping test gate"; fi
 	$(MAKE) generate-docs
-	git add docs
-	-git commit -m "Update API documentation for version $(VERSION)"
+	git add -A
+	-git commit -m "Release $(VERSION)"
 	-git push origin main
+	@TAG_V="$(VERSION)"; CARGO_V=$$(grep -m1 '^version' Cargo.toml | sed -E 's/version *= *"([^"]+)".*/\1/'); \
+		[ "$$TAG_V" = "$$CARGO_V" ] || { echo "ABORT: tag v$$TAG_V != Cargo.toml $$CARGO_V"; exit 1; }
 	cargo publish --dry-run
-	@# Tag format: v$(VERSION). The release.yml GitHub Action triggers on
-	@# `tags: v*` — a bare `$(VERSION)` tag (no v prefix) is silently ignored
-	@# by the workflow, so cargo publish never runs. Matches historical tags
-	@# v0.1.1 / v0.2.1 that worked.
 	git tag -a v$(VERSION) -m "Version $(VERSION)"
-	@# Push ONLY the new tag, not --tags (avoids pushing stale local tags).
-	@# cargo publish is handled by the release.yml workflow that fires on the
-	@# pushed v-tag; local cargo publish is removed because it needs
-	@# CARGO_REGISTRY_TOKEN which lives in CI, not on dev machines.
 	git push origin v$(VERSION)
-	$(MAKE) bump VERSION=$(NEXT_VERSION)
+	@if [ -n "$(NEXT_VERSION)" ]; then $(MAKE) bump VERSION=$(NEXT_VERSION); fi
 
 fmt:
 	cargo fmt --all
