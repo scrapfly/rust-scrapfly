@@ -108,6 +108,9 @@ impl ScrapeConfig {
         ScrapeConfigBuilder {
             cfg: ScrapeConfig {
                 url: url.into(),
+                // Sticky proxy is on by default (matches the API): a session
+                // keeps one exit IP unless the caller opts out.
+                session_sticky_proxy: true,
                 ..Default::default()
             },
         }
@@ -218,9 +221,10 @@ impl ScrapeConfig {
         }
         if let Some(session) = &self.session {
             out.push(("session".into(), session.clone()));
-            if self.session_sticky_proxy {
-                out.push(("session_sticky_proxy".into(), "true".into()));
-            }
+            out.push((
+                "session_sticky_proxy".into(),
+                self.session_sticky_proxy.to_string(),
+            ));
         }
         if let Some(os) = &self.os {
             out.push(("os".into(), os.clone()));
@@ -253,7 +257,7 @@ impl ScrapeConfig {
 
         // Extraction — exclusivity enforced by builder.
         if let Some(tpl) = &self.extraction_template {
-            out.push(("extraction_template".into(), tpl.clone()));
+            out.push(("extraction_template".into(), format!("persistent:{}", tpl)));
         } else if let Some(tpl) = &self.extraction_ephemeral_template {
             let as_str = serde_json::to_string(tpl)?;
             out.push((

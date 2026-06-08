@@ -76,7 +76,7 @@ impl ExtractionConfig {
             out.push(("charset".into(), c.clone()));
         }
         if let Some(t) = &self.extraction_template {
-            out.push(("extraction_template".into(), t.clone()));
+            out.push(("extraction_template".into(), format!("persistent:{}", t)));
         }
         if let Some(t) = &self.extraction_ephemeral_template {
             let s = serde_json::to_string(t)?;

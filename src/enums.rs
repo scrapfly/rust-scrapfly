@@ -120,6 +120,8 @@ pub enum ProxyPool {
     PublicDatacenterPool,
     /// Residential proxies (more expensive, harder to detect).
     PublicResidentialPool,
+    /// Tor network egress for .onion hidden services and OSINT.
+    PublicTorPool,
 }
 
 impl ProxyPool {
@@ -128,6 +130,7 @@ impl ProxyPool {
         match self {
             Self::PublicDatacenterPool => "public_datacenter_pool",
             Self::PublicResidentialPool => "public_residential_pool",
+            Self::PublicTorPool => "public_tor_pool",
         }
     }
 }

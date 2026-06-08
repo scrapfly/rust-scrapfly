@@ -160,3 +160,52 @@ fn error_classifier_5xx() {
     let err = scrapfly_sdk::error::from_response(503, b"{}", 0, false);
     assert!(matches!(err, ScrapflyError::ApiServer(_)));
 }
+
+#[test]
+fn session_sticky_proxy_false_is_sent() {
+    // false must reach the wire — omitting it lets the API default to
+    // sticky=true with a session, so the user could never disable it.
+    let cfg = ScrapeConfig::builder("https://example.com")
+        .session("s1")
+        .session_sticky_proxy(false)
+        .build()
+        .expect("build");
+    let pairs = cfg.to_query_pairs().expect("pairs");
+    let as_map: std::collections::HashMap<_, _> = pairs.iter().cloned().collect();
+    assert_eq!(as_map.get("session_sticky_proxy"), Some(&"false".to_string()));
+}
+
+#[test]
+fn session_sticky_proxy_true_is_sent() {
+    let cfg = ScrapeConfig::builder("https://example.com")
+        .session("s1")
+        .session_sticky_proxy(true)
+        .build()
+        .expect("build");
+    let pairs = cfg.to_query_pairs().expect("pairs");
+    let as_map: std::collections::HashMap<_, _> = pairs.iter().cloned().collect();
+    assert_eq!(as_map.get("session_sticky_proxy"), Some(&"true".to_string()));
+}
+
+#[test]
+fn session_sticky_proxy_default_is_true() {
+    // Builder defaults sticky on; a session config that never sets it must
+    // still send true (matches the API default).
+    let cfg = ScrapeConfig::builder("https://example.com")
+        .session("s1")
+        .build()
+        .expect("build");
+    let pairs = cfg.to_query_pairs().expect("pairs");
+    let as_map: std::collections::HashMap<_, _> = pairs.iter().cloned().collect();
+    assert_eq!(as_map.get("session_sticky_proxy"), Some(&"true".to_string()));
+}
+
+#[test]
+fn session_sticky_proxy_omitted_without_session() {
+    let cfg = ScrapeConfig::builder("https://example.com")
+        .session_sticky_proxy(true)
+        .build()
+        .expect("build");
+    let pairs = cfg.to_query_pairs().expect("pairs");
+    assert!(!pairs.iter().any(|(k, _)| k == "session_sticky_proxy"));
+}

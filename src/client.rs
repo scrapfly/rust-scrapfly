@@ -947,14 +947,32 @@ impl Client {
     // ==============================================================================
 
     /// Schedule a new crawler job.
+    ///
+    /// `POST /crawl` accepts two body formats:
+    ///   * `application/json` — the entire crawler configuration as JSON.
+    ///     Used for seed-URL crawls and `remote_url_list` crawls.
+    ///   * `multipart/form-data` — a `config` JSON part and a `urls` text
+    ///     part (one URL per line). Used only when the caller provides an
+    ///     in-memory `url_list`, so the URLs are uploaded as a streamed
+    ///     file payload instead of inlined into the JSON body.
     pub async fn start_crawl(
         &self,
         config: &CrawlerConfig,
     ) -> Result<CrawlerStartResponse, ScrapflyError> {
-        let body = config.to_json_body()?;
         let url = self.build_url("/crawl", &[])?;
         let mut headers = HeaderMap::new();
-        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        let body: Vec<u8> = if !config.url_list.is_empty() {
+            let (mp_body, ct) = config.to_multipart_body()?;
+            headers.insert(
+                CONTENT_TYPE,
+                HeaderValue::from_str(&ct)
+                    .map_err(|e| ScrapflyError::Config(format!("invalid multipart content-type: {e}")))?,
+            );
+            mp_body
+        } else {
+            headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+            config.to_json_body()?
+        };
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
         let resp = self
             .send_with_retry(Method::POST, url, Some(headers), Some(body))

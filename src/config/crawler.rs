@@ -9,12 +9,26 @@ use crate::error::ScrapflyError;
 
 /// Configuration for a `POST /crawl` request.
 ///
-/// Every field except `url` is optional; unset fields are NOT serialized so
-/// the server applies its own documented defaults.
+/// Exactly one URL source must be provided: `url` (seed crawl with
+/// discovery), `url_list` (in-memory list, no discovery), or
+/// `remote_url_list` (URL of a hosted text file fetched at crawl start, no
+/// discovery). Other fields default to server-side values when zero.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct CrawlerConfig {
-    /// Seed URL (required, must be HTTP/HTTPS).
+    /// Seed URL (must be HTTP/HTTPS). Mutually exclusive with `url_list`
+    /// and `remote_url_list`.
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub url: String,
+    /// Explicit URL list (no discovery). Mutually exclusive with `url`
+    /// and `remote_url_list`. When set, the SDK posts the request as
+    /// multipart/form-data so the URLs are uploaded as a streamed file
+    /// payload rather than inlined into the JSON body.
+    #[serde(skip)]
+    pub url_list: Vec<String>,
+    /// URL of a hosted text file (one URL per line) fetched at crawl
+    /// start. Mutually exclusive with `url` and `url_list`.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub remote_url_list: String,
 
     /// Max pages to crawl.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -120,7 +134,7 @@ fn is_false(v: &bool) -> bool {
 }
 
 impl CrawlerConfig {
-    /// Start a builder for `url`.
+    /// Start a builder for `url` (seed-URL crawl with discovery).
     pub fn builder(url: impl Into<String>) -> CrawlerConfigBuilder {
         CrawlerConfigBuilder {
             cfg: CrawlerConfig {
@@ -130,11 +144,45 @@ impl CrawlerConfig {
         }
     }
 
+    /// Start a builder for an explicit `url_list` (no discovery). The SDK
+    /// will post this configuration as multipart/form-data so the URLs are
+    /// uploaded as a streamed file payload.
+    pub fn builder_url_list(urls: impl IntoIterator<Item = impl Into<String>>) -> CrawlerConfigBuilder {
+        CrawlerConfigBuilder {
+            cfg: CrawlerConfig {
+                url_list: urls.into_iter().map(Into::into).collect(),
+                ..Default::default()
+            },
+        }
+    }
+
+    /// Start a builder for `remote_url_list` (no discovery, list fetched
+    /// from the given URL at crawl start).
+    pub fn builder_remote_url_list(url: impl Into<String>) -> CrawlerConfigBuilder {
+        CrawlerConfigBuilder {
+            cfg: CrawlerConfig {
+                remote_url_list: url.into(),
+                ..Default::default()
+            },
+        }
+    }
+
     /// Validate numeric bounds + list sizes. Ported from
     /// `sdk/go/config_crawler.go::validateBounds`.
     pub fn validate(&self) -> Result<(), ScrapflyError> {
-        if self.url.is_empty() {
-            return Err(ScrapflyError::Config("url is required".into()));
+        let has_seed = !self.url.is_empty();
+        let has_list = !self.url_list.is_empty();
+        let has_remote = !self.remote_url_list.is_empty();
+        let count = (has_seed as u8) + (has_list as u8) + (has_remote as u8);
+        if count == 0 {
+            return Err(ScrapflyError::Config(
+                "provide one of url, url_list, or remote_url_list".into(),
+            ));
+        }
+        if count > 1 {
+            return Err(ScrapflyError::Config(
+                "only one of url, url_list, or remote_url_list can be set".into(),
+            ));
         }
         if let Some(d) = self.max_duration {
             if !(15..=10800).contains(&d) {
@@ -200,11 +248,69 @@ impl CrawlerConfig {
         Ok(())
     }
 
-    /// Serialize into the JSON body the crawler endpoint expects.
+    /// Serialize into the JSON body the crawler endpoint expects. Used
+    /// for seed-URL crawls and remote_url_list crawls. For in-memory URL
+    /// lists the SDK switches to multipart (see `to_multipart_body`).
     pub fn to_json_body(&self) -> Result<Vec<u8>, ScrapflyError> {
         self.validate()?;
         Ok(serde_json::to_vec(self)?)
     }
+
+    /// Build a multipart/form-data body for `POST /crawl` when an in-memory
+    /// `url_list` is supplied. The `config` part carries the JSON config
+    /// (without url_list) and the `urls` part carries the URLs as
+    /// text/plain, one per line. Returns the body bytes and the matching
+    /// Content-Type header (with the boundary baked in).
+    pub fn to_multipart_body(&self) -> Result<(Vec<u8>, String), ScrapflyError> {
+        self.validate()?;
+        if self.url_list.is_empty() {
+            return Err(ScrapflyError::Config(
+                "to_multipart_body requires url_list to be set".into(),
+            ));
+        }
+
+        // Boundary derived from the SDK name + a short random tail. The
+        // value is opaque to the server; it just needs to be unique within
+        // the request and absent from the body content (URLs and JSON).
+        let boundary = format!("scrapfly-rs-{:016x}", rand_u64());
+        let config_json = serde_json::to_vec(self)?;
+        let urls_blob = self.url_list.join("\n");
+
+        let mut buf: Vec<u8> = Vec::with_capacity(config_json.len() + urls_blob.len() + 256);
+        buf.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        buf.extend_from_slice(
+            b"Content-Disposition: form-data; name=\"config\"; filename=\"config.json\"\r\n",
+        );
+        buf.extend_from_slice(b"Content-Type: application/json\r\n\r\n");
+        buf.extend_from_slice(&config_json);
+        buf.extend_from_slice(b"\r\n");
+        buf.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        buf.extend_from_slice(
+            b"Content-Disposition: form-data; name=\"urls\"; filename=\"urls.txt\"\r\n",
+        );
+        buf.extend_from_slice(b"Content-Type: text/plain\r\n\r\n");
+        buf.extend_from_slice(urls_blob.as_bytes());
+        buf.extend_from_slice(b"\r\n");
+        buf.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+
+        Ok((buf, format!("multipart/form-data; boundary={}", boundary)))
+    }
+}
+
+// Small non-crypto random for the multipart boundary. We use a fast,
+// dependency-free PRNG seeded from the system clock — the boundary just
+// needs to be unique within the request, not cryptographically secure.
+fn rand_u64() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    // splitmix64 step from the source paper — adequate for boundary tags.
+    let mut z = nanos.wrapping_add(0x9E3779B97F4A7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+    z ^ (z >> 31)
 }
 
 /// Builder for [`CrawlerConfig`].

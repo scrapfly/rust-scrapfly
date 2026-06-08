@@ -30,7 +30,7 @@ pub mod result;
 pub mod schedule;
 
 pub use client::{Client, ClientBuilder, OnRequest};
-pub use cloud_browser::{BrowserConfig, UnblockConfig, UnblockResult};
+pub use cloud_browser::{project_salt, BrowserConfig, UnblockConfig, UnblockResult};
 pub use config::crawler::CrawlerConfig;
 pub use config::extraction::ExtractionConfig;
 pub use config::scrape::ScrapeConfig;
