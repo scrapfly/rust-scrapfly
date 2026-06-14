@@ -168,6 +168,10 @@ pub struct UnblockConfig {
     /// Fingerprint browser brand: `chrome`, `edge`, `brave`, `opera`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub browser_brand: Option<String>,
+    /// Named session for reconnection — reuses an existing ASP session and
+    /// disables auto-close on disconnect.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
     /// Navigation timeout.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u32>,
