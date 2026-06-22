@@ -20,6 +20,15 @@ pub struct BrowserConfig {
     /// Proxy country.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub country: Option<String>,
+    /// Browser UI language — the singular `navigator.language` base tag
+    /// (e.g. "en"). `None` lets the server derive it from `country`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lang: Option<String>,
+    /// Ordered language preference list driving `navigator.languages` and the
+    /// q-weighted `Accept-Language` header (e.g. `["fr-FR", "fr", "en-US"]`).
+    /// Sent comma-joined on the wire; capped server-side at 3 entries.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub languages: Vec<String>,
     /// Session name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
@@ -221,6 +230,12 @@ impl Client {
         }
         if let Some(v) = &config.country {
             pairs.push(("country".into(), v.clone()));
+        }
+        if let Some(v) = &config.lang {
+            pairs.push(("lang".into(), v.clone()));
+        }
+        if !config.languages.is_empty() {
+            pairs.push(("languages".into(), config.languages.join(",")));
         }
         if let Some(v) = &config.session {
             pairs.push(("session".into(), v.clone()));
