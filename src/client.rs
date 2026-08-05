@@ -525,8 +525,8 @@ impl Client {
         // in `sdk/go/client.go::checkResult` (4xx → UpstreamClient,
         // 5xx → UpstreamServer).
         if !result.result.success {
-            let (err_code, err_message, err_doc) = match &result.result.error {
-                Some(e) => (e.code.clone(), e.message.clone(), e.doc_url.clone()),
+            let (err_code, err_message, err_doc, err_retryable) = match &result.result.error {
+                Some(e) => (e.code.clone(), e.message.clone(), e.doc_url.clone(), e.retryable),
                 None => (
                     result.result.status.clone(),
                     format!(
@@ -534,6 +534,7 @@ impl Client {
                         result.result.status_code
                     ),
                     String::new(),
+                    false,
                 ),
             };
             let api_err = ApiError {
@@ -543,6 +544,7 @@ impl Client {
                 documentation_url: err_doc,
                 hint: String::new(),
                 retry_after_ms: 0,
+                retryable: err_retryable,
             };
             let sc = result.result.status_code;
             if (400..500).contains(&sc) {
@@ -674,7 +676,8 @@ impl Client {
         opts: crate::batch::BatchOptions,
     ) -> Result<impl Stream<Item = (String, crate::batch::BatchOutcome)>, ScrapflyError> {
         use crate::batch::{
-            build_proxified_response, decode_part_body, parts_from_response, BatchOutcome,
+            api_error_from_part, build_proxified_response, decode_part_body,
+            parts_from_response, BatchOutcome,
         };
 
         if configs.is_empty() {
@@ -787,6 +790,12 @@ impl Client {
                     return (correlation_id, BatchOutcome::Proxified(prox));
                 }
 
+                // API-generated error parts carry an error body instead of
+                // the scrape envelope — surface them as typed errors.
+                if let Some(err) = api_error_from_part(&part) {
+                    return (correlation_id, BatchOutcome::Err(err));
+                }
+
                 match decode_part_body::<ScrapeResult>(&part) {
                     Ok(r) => (correlation_id, BatchOutcome::Scrape(r)),
                     Err(e) => (correlation_id, BatchOutcome::Err(e)),
@@ -864,6 +873,7 @@ impl Client {
                 documentation_url: doc,
                 hint: String::new(),
                 retry_after_ms,
+                retryable,
             }));
         }
         Ok(resp)

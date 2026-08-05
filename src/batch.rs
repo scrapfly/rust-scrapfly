@@ -461,6 +461,32 @@ pub fn build_proxified_response(part: BatchPart) -> BatchProxifiedResponse {
     }
 }
 
+/// Convert an API-generated error part (status >= 400, no scrape
+/// envelope) into the typed error the batch-level failure path
+/// produces. Returns `None` for scrape envelopes.
+pub(crate) fn api_error_from_part(part: &BatchPart) -> Option<ScrapflyError> {
+    let status: u16 = part
+        .headers
+        .get("x-scrapfly-scrape-status")?
+        .parse()
+        .ok()?;
+
+    if status < 400 {
+        return None;
+    }
+
+    let probe: serde_json::Value = decode_part_body(part).ok()?;
+    let obj = probe.as_object()?;
+
+    if obj.contains_key("result") || obj.contains_key("config") {
+        return None;
+    }
+
+    let body = serde_json::to_vec(obj).ok()?;
+
+    Some(crate::error::from_response(status, &body, 0, false))
+}
+
 /// Decode a part body according to its Content-Type. Supports
 /// `application/json` (default) and `application/msgpack`.
 pub fn decode_part_body<T: serde::de::DeserializeOwned>(

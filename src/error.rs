@@ -20,6 +20,8 @@ pub struct ApiError {
     pub hint: String,
     /// Retry-After in milliseconds, parsed from the HTTP header.
     pub retry_after_ms: u64,
+    /// Whether the API marked the error as retryable.
+    pub retryable: bool,
 }
 
 impl std::fmt::Display for ApiError {
@@ -140,6 +142,8 @@ struct ErrorEnvelope {
     #[serde(default)]
     #[allow(dead_code)]
     http_code: u16,
+    #[serde(default)]
+    retryable: bool,
 }
 
 /// Build a [`ScrapflyError`] from a non-2xx HTTP response.
@@ -167,6 +171,7 @@ pub fn from_response(
         documentation_url: String::new(),
         hint: String::new(),
         retry_after_ms,
+        retryable: envelope.retryable,
     };
 
     // ERR::SCHEDULER::* takes precedence over the generic 429/422 dispatch
