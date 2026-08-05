@@ -125,6 +125,25 @@ pub fn project_salt(api_key: &str) -> String {
     hex::encode(&digest[..4])
 }
 
+impl BrowserConfig {
+    /// Return the password a native VNC client must type to attach to a
+    /// session created with this config: `<project_salt>-<vnc_password>`.
+    ///
+    /// Required by the VNC TCP endpoint (port 5901), which the server salts at
+    /// allocation. The WebSocket endpoint `/run/<run_id>/vnc` takes the raw
+    /// `vnc_password` instead. `None` when the config carries no VNC credential
+    /// to salt.
+    pub fn vnc_client_password(&self, api_key: &str) -> Option<String> {
+        if !self.enable_vnc {
+            return None;
+        }
+        self.vnc_password
+            .as_deref()
+            .filter(|pw| !pw.is_empty())
+            .map(|pw| format!("{}-{}", project_salt(api_key), pw))
+    }
+}
+
 fn is_false(v: &bool) -> bool {
     !*v
 }
@@ -317,6 +336,16 @@ impl Client {
     /// Matches the `X-Browser-Project-Salt` response header.
     pub fn cloud_browser_project_salt(&self) -> String {
         project_salt(self.api_key())
+    }
+
+    /// Return the password a native VNC client must type to attach to a
+    /// session created with `config`: `<project_salt>-<vnc_password>`.
+    ///
+    /// Copy this value into your VNC client when connecting to the TCP
+    /// endpoint (port 5901). The WebSocket endpoint `/run/<run_id>/vnc` takes
+    /// the raw `vnc_password` instead.
+    pub fn cloud_browser_vnc_password(&self, config: &BrowserConfig) -> Option<String> {
+        config.vnc_client_password(self.api_key())
     }
 
     /// Call `POST /unblock` to bypass anti-bot protection.

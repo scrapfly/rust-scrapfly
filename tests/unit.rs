@@ -2,7 +2,7 @@
 
 use scrapfly_sdk::config::scrape::ScrapeConfig;
 use scrapfly_sdk::result::crawler::CrawlerUrls;
-use scrapfly_sdk::{CrawlerConfig, ScrapflyError};
+use scrapfly_sdk::{BrowserConfig, CrawlerConfig, ScrapflyError};
 
 #[test]
 fn scrape_config_query_pairs_basic() {
@@ -217,4 +217,42 @@ fn session_sticky_proxy_omitted_without_session() {
         .expect("build");
     let pairs = cfg.to_query_pairs().expect("pairs");
     assert!(!pairs.iter().any(|(k, _)| k == "session_sticky_proxy"));
+}
+
+// The API stores "<project_salt>-<vnc_password>" and native VNC clients must
+// send that exact string, so the separator and the 8-char salt width are a wire
+// contract. VNC_TEST_SALT is hardcoded rather than recomputed so a change to the
+// derivation fails the test instead of moving with it.
+const VNC_TEST_API_KEY: &str = "scp-test-0000000000000000000000000000000000";
+const VNC_TEST_SALT: &str = "701018da";
+
+#[test]
+fn vnc_client_password_matches_server_salting() {
+    let cfg = BrowserConfig {
+        enable_vnc: true,
+        vnc_password: Some("hunter2".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        cfg.vnc_client_password(VNC_TEST_API_KEY),
+        Some(format!("{VNC_TEST_SALT}-hunter2"))
+    );
+}
+
+#[test]
+fn vnc_client_password_none_when_server_would_not_salt() {
+    let cases = [
+        ("password unset", true, None),
+        ("password empty", true, Some(String::new())),
+        ("vnc disabled", false, Some("hunter2".to_string())),
+    ];
+
+    for (case, enable_vnc, vnc_password) in cases {
+        let cfg = BrowserConfig {
+            enable_vnc,
+            vnc_password,
+            ..Default::default()
+        };
+        assert_eq!(cfg.vnc_client_password(VNC_TEST_API_KEY), None, "{case}");
+    }
 }
