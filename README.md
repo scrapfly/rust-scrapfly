@@ -14,6 +14,13 @@ and Go SDKs.
 - Zero `unwrap()` / `expect()` in library code
 - No HTML parser bundled — bring your own (e.g. `scraper`, `kuchiki`)
 
+## Install
+
+```sh
+cargo add scrapfly-sdk
+cargo add tokio --features full
+```
+
 ## Quick start
 
 ```rust
