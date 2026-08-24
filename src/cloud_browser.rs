@@ -14,7 +14,7 @@ pub struct BrowserConfig {
     /// Proxy pool.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proxy_pool: Option<String>,
-    /// OS fingerprint.
+    /// OS fingerprint: `linux`, `windows`, `macos`, `android`, `iphone`, `ipad`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub os: Option<String>,
     /// Proxy country.
@@ -114,6 +114,12 @@ pub struct BrowserConfig {
     /// string.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub hitl_allowed_networks: Vec<String>,
+    /// Account browser extension ids to pre-install in the session, sent
+    /// comma-joined. Upload and list them with the extension endpoints; ids
+    /// the api key does not own are skipped server-side. PRO plan and above.
+    /// See <https://scrapfly.io/docs/cloud-browser-api/extensions>.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub extensions: Vec<String>,
 }
 
 /// Return the deterministic project salt for an api key (`sha256(api_key)[:8]`).
@@ -190,7 +196,7 @@ pub struct UnblockConfig {
     /// Proxy country.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub country: Option<String>,
-    /// Fingerprint OS: `linux`, `windows`, `macos`.
+    /// Fingerprint OS: `linux`, `windows`, `macos`, `android`, `iphone`, `ipad`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub os: Option<String>,
     /// Fingerprint browser brand: `chrome`, `edge`, `brave`, `opera`.
@@ -255,6 +261,9 @@ impl Client {
         }
         if !config.languages.is_empty() {
             pairs.push(("languages".into(), config.languages.join(",")));
+        }
+        if !config.extensions.is_empty() {
+            pairs.push(("extensions".into(), config.extensions.join(",")));
         }
         if let Some(v) = &config.session {
             pairs.push(("session".into(), v.clone()));
