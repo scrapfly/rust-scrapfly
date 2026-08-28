@@ -465,11 +465,7 @@ pub fn build_proxified_response(part: BatchPart) -> BatchProxifiedResponse {
 /// envelope) into the typed error the batch-level failure path
 /// produces. Returns `None` for scrape envelopes.
 pub(crate) fn api_error_from_part(part: &BatchPart) -> Option<ScrapflyError> {
-    let status: u16 = part
-        .headers
-        .get("x-scrapfly-scrape-status")?
-        .parse()
-        .ok()?;
+    let status: u16 = part.headers.get("x-scrapfly-scrape-status")?.parse().ok()?;
 
     if status < 400 {
         return None;

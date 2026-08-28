@@ -526,7 +526,12 @@ impl Client {
         // 5xx → UpstreamServer).
         if !result.result.success {
             let (err_code, err_message, err_doc, err_retryable) = match &result.result.error {
-                Some(e) => (e.code.clone(), e.message.clone(), e.doc_url.clone(), e.retryable),
+                Some(e) => (
+                    e.code.clone(),
+                    e.message.clone(),
+                    e.doc_url.clone(),
+                    e.retryable,
+                ),
                 None => (
                     result.result.status.clone(),
                     format!(
@@ -676,8 +681,8 @@ impl Client {
         opts: crate::batch::BatchOptions,
     ) -> Result<impl Stream<Item = (String, crate::batch::BatchOutcome)>, ScrapflyError> {
         use crate::batch::{
-            api_error_from_part, build_proxified_response, decode_part_body,
-            parts_from_response, BatchOutcome,
+            api_error_from_part, build_proxified_response, decode_part_body, parts_from_response,
+            BatchOutcome,
         };
 
         if configs.is_empty() {
