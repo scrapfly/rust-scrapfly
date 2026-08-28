@@ -62,6 +62,21 @@ pub struct BrowserConfig {
     /// Resolution.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolution: Option<String>,
+    /// URL this session will scrape. It is not navigated to — the browser still
+    /// goes wherever you drive it over CDP — but declaring it lets Scrapfly pick
+    /// the proxy and fingerprint for that site before the browser starts.
+    ///
+    /// Strongly recommended. A proxy network is chosen once per session, and some
+    /// upstream providers refuse whole categories of destination (government
+    /// portals, for example). Without it that choice is made blind, and a session
+    /// routed to a provider that refuses the target fails at connection time:
+    /// Chromium renders its own `ERR_SOCKS_CONNECTION_FAILED` page and no page
+    /// data is returned.
+    ///
+    /// Must be an absolute URL including the scheme (`https://example.com`); a
+    /// bare hostname is rejected server-side.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_url: Option<String>,
     /// Browser brand.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub browser_brand: Option<String>,
@@ -294,6 +309,9 @@ impl Client {
         }
         if config.debug {
             pairs.push(("debug".into(), "true".into()));
+        }
+        if let Some(v) = &config.target_url {
+            pairs.push(("target_url".into(), v.clone()));
         }
         if let Some(v) = &config.resolution {
             pairs.push(("resolution".into(), v.clone()));
