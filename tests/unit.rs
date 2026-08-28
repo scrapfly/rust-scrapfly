@@ -2,7 +2,7 @@
 
 use scrapfly_sdk::config::scrape::ScrapeConfig;
 use scrapfly_sdk::result::crawler::CrawlerUrls;
-use scrapfly_sdk::{BrowserConfig, CrawlerConfig, ScrapflyError};
+use scrapfly_sdk::{BrowserConfig, Client, CrawlerConfig, ScrapflyError};
 
 #[test]
 fn scrape_config_query_pairs_basic() {
@@ -255,4 +255,42 @@ fn vnc_client_password_none_when_server_would_not_salt() {
         };
         assert_eq!(cfg.vnc_client_password(VNC_TEST_API_KEY), None, "{case}");
     }
+}
+
+// target_url is what lets the server pick a proxy that serves the destination. A
+// session that omits it is routed blind, and an upstream provider refusing the
+// target fails the whole run at CONNECT time, so the parameter has to reach the
+// wire rather than merely being stored on the config.
+#[test]
+fn cloud_browser_url_sends_target_url() {
+    let client = Client::builder()
+        .api_key(VNC_TEST_API_KEY.to_string())
+        .build()
+        .expect("client");
+    let cfg = BrowserConfig {
+        target_url: Some("https://web-scraping.dev/products".to_string()),
+        ..Default::default()
+    };
+
+    let url = client.cloud_browser_url(&cfg);
+
+    assert!(
+        url.contains("target_url=https%3A%2F%2Fweb-scraping.dev%2Fproducts"),
+        "target_url missing or unescaped in {url}"
+    );
+}
+
+#[test]
+fn cloud_browser_url_omits_target_url_when_unset() {
+    let client = Client::builder()
+        .api_key(VNC_TEST_API_KEY.to_string())
+        .build()
+        .expect("client");
+
+    let url = client.cloud_browser_url(&BrowserConfig::default());
+
+    assert!(
+        !url.contains("target_url"),
+        "target_url must not be sent when unset, got {url}"
+    );
 }
