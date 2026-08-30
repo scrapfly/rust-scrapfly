@@ -138,8 +138,9 @@ pub struct BrowserConfig {
 }
 
 /// Return the deterministic project salt for an api key (`sha256(api_key)[:8]`).
-/// Matches the `X-Browser-Project-Salt` response header returned on a
-/// successful Cloud Browser WebSocket upgrade.
+/// Matches the `X-Browser-Project-Salt` response header returned on
+/// VNC-enabled Cloud Browser upgrades, where the salt is also the VNC
+/// password prefix (`<salt>-<password>`).
 pub fn project_salt(api_key: &str) -> String {
     use sha2::{Digest, Sha256};
     let digest = Sha256::digest(api_key.as_bytes());
