@@ -158,7 +158,26 @@ pub fn from_response(
     retry_after_ms: u64,
     is_crawler: bool,
 ) -> ScrapflyError {
-    let envelope: ErrorEnvelope = serde_json::from_slice(body).unwrap_or_default();
+    let mut envelope: ErrorEnvelope = serde_json::from_slice(body).unwrap_or_default();
+
+    // A failed scrape is returned as a full ScrapeResult with the real ERR:: code
+    // at result.error.code, not as a flat envelope — /scrape answers 400 that way
+    // for e.g. ERR::WEBHOOK::NOT_FOUND. Without this the code came back empty and
+    // callers could not branch on it. Mirrors sdk/go handleAPIErrorResponse.
+    if envelope.code.is_empty() {
+        if let Ok(v) = serde_json::from_slice::<serde_json::Value>(body) {
+            if let Some(inner) = v.get("result").and_then(|r| r.get("error")) {
+                if let Some(code) = inner.get("code").and_then(|c| c.as_str()) {
+                    envelope.code = code.to_string();
+                }
+                if envelope.message.is_empty() {
+                    if let Some(m) = inner.get("message").and_then(|m| m.as_str()) {
+                        envelope.message = m.to_string();
+                    }
+                }
+            }
+        }
+    }
     let msg = if envelope.message.is_empty() {
         format!("API returned status {}", status)
     } else {
