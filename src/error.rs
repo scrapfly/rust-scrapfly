@@ -22,6 +22,11 @@ pub struct ApiError {
     pub retry_after_ms: u64,
     /// Whether the API marked the error as retryable.
     pub retryable: bool,
+    /// Instance-specific explanation from the API. `message` is the catalogue
+    /// description of the code; `reason` says what was wrong with THIS request
+    /// and usually names the fix. Dropping it hid half the documented error
+    /// surface from callers.
+    pub reason: String,
 }
 
 impl std::fmt::Display for ApiError {
@@ -31,6 +36,9 @@ impl std::fmt::Display for ApiError {
             "API Error: {} (code: {}, status: {}, docs: {})",
             self.message, self.code, self.http_status, self.documentation_url
         )?;
+        if !self.reason.is_empty() {
+            write!(f, ", reason: {}", self.reason)?;
+        }
         if self.retry_after_ms > 0 {
             write!(f, ", retry_after_ms: {}", self.retry_after_ms)?;
         }
@@ -144,6 +152,8 @@ struct ErrorEnvelope {
     http_code: u16,
     #[serde(default)]
     retryable: bool,
+    #[serde(default)]
+    reason: String,
 }
 
 /// Build a [`ScrapflyError`] from a non-2xx HTTP response.
@@ -191,6 +201,7 @@ pub fn from_response(
         hint: String::new(),
         retry_after_ms,
         retryable: envelope.retryable,
+        reason: envelope.reason.clone(),
     };
 
     // ERR::SCHEDULER::* takes precedence over the generic 429/422 dispatch
@@ -198,7 +209,7 @@ pub fn from_response(
     // ScheduleFailed (resource-typed) rather than the generic
     // TooManyRequests variant. Same rule for any future SCHEDULE error
     // that overlaps with a status-typed bucket.
-    if envelope.code.contains("::SCHEDULE::") {
+    if envelope.code.contains("::SCHEDULER::") {
         return ScrapflyError::ScheduleFailed(err);
     }
 
@@ -238,7 +249,7 @@ pub fn from_response(
             "SCRAPE" => return ScrapflyError::ScrapeFailed(err),
             "PROXY" => return ScrapflyError::ProxyFailed(err),
             "ASP" => return ScrapflyError::AspBypassFailed(err),
-            "SCHEDULE" => return ScrapflyError::ScheduleFailed(err),
+            "SCHEDULER" => return ScrapflyError::ScheduleFailed(err),
             "WEBHOOK" => return ScrapflyError::WebhookFailed(err),
             "SESSION" => return ScrapflyError::SessionFailed(err),
             "THROTTLE" => return ScrapflyError::TooManyRequests(err),

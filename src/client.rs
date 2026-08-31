@@ -550,6 +550,7 @@ impl Client {
                 hint: String::new(),
                 retry_after_ms: 0,
                 retryable: err_retryable,
+                reason: String::new(),
             };
             let sc = result.result.status_code;
             if (400..500).contains(&sc) {
@@ -879,6 +880,7 @@ impl Client {
                 hint: String::new(),
                 retry_after_ms,
                 retryable,
+                reason: String::new(),
             }));
         }
         Ok(resp)
