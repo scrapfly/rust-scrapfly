@@ -88,7 +88,17 @@ pub enum ScrapflyError {
     /// Proxy failure (`ERR::PROXY::*`).
     #[error("proxy error: {0}")]
     ProxyFailed(ApiError),
-    /// Anti-bot bypass failure (`ERR::ASP::*`).
+    /// Anti-bot bypass failure (`ERR::ASP::*`), i.e. the Unblocker could not
+    /// get through the target's protection.
+    ///
+    /// The variant keeps its `Asp` name because the API status it carries is
+    /// still `ERR::ASP::*` and customer `match` arms name it. A variant cannot
+    /// be aliased in Rust, so the current name of the feature reaches this
+    /// surface as [`ScrapflyError::is_unblocker_failure`] instead — the
+    /// counterpart of Go's `ErrUnblockerBypassFailed`, TypeScript's
+    /// `ScrapflyUnblockerError` and Python's `ScrapflyUnblockerError`.
+    #[doc(alias = "unblocker")]
+    #[doc(alias = "UnblockerBypassFailed")]
     #[error("ASP bypass error: {0}")]
     AspBypassFailed(ApiError),
     /// Schedule error.
@@ -133,6 +143,30 @@ pub enum ScrapflyError {
     /// I/O failure (example: save screenshot to disk).
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+}
+
+impl ScrapflyError {
+    /// Whether this is an Unblocker (anti-bot bypass) failure.
+    ///
+    /// The same condition as matching [`ScrapflyError::AspBypassFailed`], under
+    /// the feature's current customer-facing name. `asp` was renamed to
+    /// `unblocker` on the config surface, and the other three Scrapfly SDKs
+    /// carry that rename onto their error surface as an alias
+    /// (`ErrUnblockerBypassFailed` in Go, `ScrapflyUnblockerError` in
+    /// TypeScript and Python). Rust cannot alias an enum variant, so this
+    /// predicate is the equivalent: a caller who renamed the config parameter
+    /// has an unblocker-named way to test for the matching failure.
+    ///
+    /// ```
+    /// # use scrapfly_sdk::error::ScrapflyError;
+    /// fn retry_without_bypass(err: &ScrapflyError) -> bool {
+    ///     err.is_unblocker_failure()
+    /// }
+    /// ```
+    #[doc(alias = "is_asp_failure")]
+    pub fn is_unblocker_failure(&self) -> bool {
+        matches!(self, ScrapflyError::AspBypassFailed(_))
+    }
 }
 
 #[derive(Debug, Deserialize, Default)]

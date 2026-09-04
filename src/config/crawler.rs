@@ -136,7 +136,15 @@ pub struct CrawlerConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refresh_interval: Option<u32>,
 
-    /// Enable ASP bypass.
+    /// Enable the Unblocker (anti-bot bypass).
+    ///
+    /// The field keeps the deprecated `asp` name on purpose: this struct
+    /// derives `Serialize`, so the Rust field name *is* the `POST /crawl`
+    /// body key, and the wire key does not change in this release.
+    /// `CrawlerConfigBuilder::unblocker` is the current input name and
+    /// writes here; `#[serde(alias)]` would not help since it is
+    /// deserialize-only. [`set_unblocker`](Self::set_unblocker) writes the
+    /// same slot after `build()`.
     #[serde(skip_serializing_if = "is_false")]
     pub asp: bool,
     /// Proxy pool name.
@@ -166,6 +174,9 @@ impl CrawlerConfig {
                 url: url.into(),
                 ..Default::default()
             },
+            unblocker_input: false,
+            asp_set: false,
+            unblocker_set: false,
         }
     }
 
@@ -180,6 +191,9 @@ impl CrawlerConfig {
                 url_list: urls.into_iter().map(Into::into).collect(),
                 ..Default::default()
             },
+            unblocker_input: false,
+            asp_set: false,
+            unblocker_set: false,
         }
     }
 
@@ -191,7 +205,27 @@ impl CrawlerConfig {
                 remote_url_list: url.into(),
                 ..Default::default()
             },
+            unblocker_input: false,
+            asp_set: false,
+            unblocker_set: false,
         }
+    }
+
+    /// Whether the Unblocker is on for this crawl.
+    ///
+    /// Reads the [`asp`](Self::asp) field, which is the resolved value:
+    /// [`CrawlerConfigBuilder`] collapses the `unblocker` and `asp` inputs
+    /// onto it at `build()` time.
+    pub fn unblocker_enabled(&self) -> bool {
+        self.asp
+    }
+
+    /// Turn the Unblocker on or off after `build()`, under the current name.
+    ///
+    /// Writes the same single slot the [`asp`](Self::asp) field is, so the
+    /// two names can never disagree.
+    pub fn set_unblocker(&mut self, v: bool) {
+        self.asp = v;
     }
 
     /// Validate numeric bounds + list sizes. Ported from
@@ -358,6 +392,16 @@ fn rand_u64() -> u64 {
 #[derive(Debug, Clone)]
 pub struct CrawlerConfigBuilder {
     cfg: CrawlerConfig,
+    // `CrawlerConfig` has no `unblocker` field — it derives Serialize, so a
+    // field of that name would put `unblocker` in the POST /crawl body. The
+    // input is parked here and folded onto `cfg.asp` at build() time.
+    unblocker_input: bool,
+    // Which of the two input names the caller actually reached for. A plain
+    // `bool` cannot tell "not supplied" from "supplied false", and the
+    // decided precedence needs that distinction to let `.asp(false)` veto
+    // `.unblocker(true)` regardless of call order.
+    asp_set: bool,
+    unblocker_set: bool,
 }
 
 impl CrawlerConfigBuilder {
@@ -496,9 +540,19 @@ impl CrawlerConfigBuilder {
         self.cfg.refresh_interval = Some(v);
         self
     }
-    /// Enable ASP.
+    /// Enable the Unblocker (anti-bot bypass).
+    pub fn unblocker(mut self, v: bool) -> Self {
+        self.unblocker_input = v;
+        self.unblocker_set = true;
+        self
+    }
+    /// Enable the Unblocker under its deprecated name.
+    ///
+    /// Kept working forever. When both names are supplied this one wins, in
+    /// either call order.
     pub fn asp(mut self, v: bool) -> Self {
         self.cfg.asp = v;
+        self.asp_set = true;
         self
     }
     /// Set proxy pool name.
@@ -523,7 +577,23 @@ impl CrawlerConfigBuilder {
     }
     /// Finalize the builder.
     pub fn build(self) -> Result<CrawlerConfig, ScrapflyError> {
-        self.cfg.validate()?;
-        Ok(self.cfg)
+        let CrawlerConfigBuilder {
+            mut cfg,
+            unblocker_input,
+            asp_set,
+            unblocker_set,
+        } = self;
+
+        // Fixed precedence, identical in every Scrapfly SDK: a supplied
+        // `asp` wins, `unblocker` decides only when `asp` was not supplied.
+        // The result lands on `cfg.asp` because that field name is the wire
+        // key (this struct derives Serialize) and the wire key does not
+        // change in this release.
+        if !asp_set && unblocker_set {
+            cfg.asp = unblocker_input;
+        }
+
+        cfg.validate()?;
+        Ok(cfg)
     }
 }

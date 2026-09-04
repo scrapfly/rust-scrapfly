@@ -167,6 +167,13 @@ pub struct ListSchedulesOptions {
 
 impl Client {
     /// Create a Web Scraping API schedule.
+    ///
+    /// `scrape_config` is forwarded to the API verbatim, so its keys are WIRE
+    /// keys and not [`ScrapeConfig`](crate::config::scrape::ScrapeConfig) field
+    /// names. The anti-bot bypass may be spelled either way here: the API folds
+    /// `unblocker` into `asp` on the STORED config, with the same precedence
+    /// the SDK uses (a supplied `asp` wins; `unblocker` is read only when `asp`
+    /// is absent, `null` or `""`), so both names reach the replayed scrape.
     pub async fn create_scrape_schedule(
         &self,
         scrape_config: HashMap<String, Value>,
@@ -192,6 +199,12 @@ impl Client {
     }
 
     /// Create a Crawler API schedule.
+    ///
+    /// `crawler_config` is forwarded verbatim and its keys are WIRE keys, not
+    /// [`CrawlerConfig`](crate::config::crawler::CrawlerConfig) field names. As
+    /// with [`create_scrape_schedule`](Self::create_scrape_schedule), the
+    /// anti-bot bypass may be spelled `asp` or `unblocker`: the API folds the
+    /// alias into `asp` on the stored config before it is ever replayed.
     pub async fn create_crawler_schedule(
         &self,
         crawler_config: HashMap<String, Value>,

@@ -28,7 +28,16 @@ pub struct ScrapeConfig {
     pub proxy_pool: Option<ProxyPool>,
     /// Enable JavaScript rendering.
     pub render_js: bool,
-    /// Enable Anti-Scraping Protection bypass.
+    /// Enable the Unblocker (anti-bot bypass).
+    ///
+    /// The field keeps the deprecated `asp` name on purpose: it is the one
+    /// storage slot behind both input names, and renaming a public field
+    /// would stop existing callers from compiling. There is deliberately no
+    /// second `unblocker` field — two fields could disagree, and then
+    /// neither name alone could turn the feature off.
+    /// [`unblocker_enabled`](Self::unblocker_enabled) reads it and
+    /// [`set_unblocker`](Self::set_unblocker) writes it under the current
+    /// name.
     pub asp: bool,
     /// Enable cache.
     pub cache: bool,
@@ -113,7 +122,30 @@ impl ScrapeConfig {
                 session_sticky_proxy: true,
                 ..Default::default()
             },
+            unblocker_input: false,
+            asp_set: false,
+            unblocker_set: false,
         }
+    }
+
+    /// Whether the Unblocker is on for this scrape.
+    ///
+    /// Reads the [`asp`](Self::asp) field, which is the resolved value:
+    /// [`ScrapeConfigBuilder`] collapses the `unblocker` and `asp` inputs
+    /// onto it at `build()` time. Precedence is fixed and identical in
+    /// every Scrapfly SDK: a supplied `asp` wins, and `unblocker` is
+    /// consulted only when `asp` was not supplied. The two names are never
+    /// OR-ed, so an explicit `false` on either one turns the feature off.
+    pub fn unblocker_enabled(&self) -> bool {
+        self.asp
+    }
+
+    /// Turn the Unblocker on or off after `build()`, under the current name.
+    ///
+    /// Writes the same single slot the [`asp`](Self::asp) field is, so the
+    /// two names can never disagree.
+    pub fn set_unblocker(&mut self, v: bool) {
+        self.asp = v;
     }
 
     /// Serialize the config into the query-parameter pairs that the
@@ -180,7 +212,13 @@ impl ScrapeConfig {
             }
         }
 
-        if self.asp {
+        // The wire key stays `asp` whichever input name the caller used.
+        // Published crate versions are immutable and upgraded per install,
+        // so a build that emitted `unblocker` against an API deployment
+        // that has not learned it on this parser would silently drop a paid
+        // feature: the scrape succeeds, is billed, and returns a blocked
+        // page. Flipping the emitted key is a separate release.
+        if self.unblocker_enabled() {
             out.push(("asp".into(), "true".into()));
         }
         if self.retry == Some(false) {
@@ -309,6 +347,16 @@ impl ScrapeConfig {
 #[derive(Debug, Clone)]
 pub struct ScrapeConfigBuilder {
     cfg: ScrapeConfig,
+    // `ScrapeConfig` has one anti-bot slot, `cfg.asp`. The `unblocker` input
+    // is parked here and folded onto it at build() time so the two names can
+    // never end up disagreeing on a built config.
+    unblocker_input: bool,
+    // Which of the two input names the caller actually reached for. A plain
+    // `bool` field cannot tell "not supplied" from "supplied false", and the
+    // decided precedence needs that distinction to let `.asp(false)` veto
+    // `.unblocker(true)` regardless of call order.
+    asp_set: bool,
+    unblocker_set: bool,
 }
 
 impl ScrapeConfigBuilder {
@@ -352,9 +400,20 @@ impl ScrapeConfigBuilder {
         self.cfg.render_js = v;
         self
     }
-    /// Enable ASP bypass.
+    /// Enable the Unblocker (anti-bot bypass).
+    pub fn unblocker(mut self, v: bool) -> Self {
+        self.unblocker_input = v;
+        self.unblocker_set = true;
+        self
+    }
+    /// Enable the Unblocker under its deprecated name.
+    ///
+    /// Kept working forever. When both names are supplied this one wins,
+    /// in either call order — see
+    /// [`ScrapeConfig::unblocker_enabled`].
     pub fn asp(mut self, v: bool) -> Self {
         self.cfg.asp = v;
+        self.asp_set = true;
         self
     }
     /// Enable cache.
@@ -535,7 +594,22 @@ impl ScrapeConfigBuilder {
     /// Finalize the builder, enforcing the mutual-exclusion rules for the
     /// extraction fields.
     pub fn build(self) -> Result<ScrapeConfig, ScrapflyError> {
-        let cfg = self.cfg;
+        let ScrapeConfigBuilder {
+            mut cfg,
+            unblocker_input,
+            asp_set,
+            unblocker_set,
+        } = self;
+
+        // Fixed precedence, identical in every Scrapfly SDK: a supplied
+        // `asp` wins, `unblocker` decides only when `asp` was not supplied.
+        // The result lands on `cfg.asp` because that is the only anti-bot
+        // slot on the config, so a later `cfg.asp = false` (or
+        // `set_unblocker(false)`) still turns the feature off.
+        if !asp_set && unblocker_set {
+            cfg.asp = unblocker_input;
+        }
+
         let count = [
             cfg.extraction_template.is_some(),
             cfg.extraction_ephemeral_template.is_some(),

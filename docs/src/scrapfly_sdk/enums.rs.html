@@ -379,21 +379,30 @@
 <a href=#379 id=379 data-nosnippet>379</a>    </span>CrawlerCancelled,
 <a href=#380 id=380 data-nosnippet>380</a>    <span class="doccomment">/// `crawler_finished`.
 <a href=#381 id=381 data-nosnippet>381</a>    </span>CrawlerFinished,
-<a href=#382 id=382 data-nosnippet>382</a>}
-<a href=#383 id=383 data-nosnippet>383</a>
-<a href=#384 id=384 data-nosnippet>384</a><span class="kw">impl </span>CrawlerWebhookEvent {
-<a href=#385 id=385 data-nosnippet>385</a>    <span class="doccomment">/// Wire-format string.
-<a href=#386 id=386 data-nosnippet>386</a>    </span><span class="kw">pub fn </span>as_str(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str {
-<a href=#387 id=387 data-nosnippet>387</a>        <span class="kw">match </span><span class="self">self </span>{
-<a href=#388 id=388 data-nosnippet>388</a>            <span class="self">Self</span>::CrawlerStarted =&gt; <span class="string">"crawler_started"</span>,
-<a href=#389 id=389 data-nosnippet>389</a>            <span class="self">Self</span>::CrawlerUrlVisited =&gt; <span class="string">"crawler_url_visited"</span>,
-<a href=#390 id=390 data-nosnippet>390</a>            <span class="self">Self</span>::CrawlerUrlSkipped =&gt; <span class="string">"crawler_url_skipped"</span>,
-<a href=#391 id=391 data-nosnippet>391</a>            <span class="self">Self</span>::CrawlerUrlDiscovered =&gt; <span class="string">"crawler_url_discovered"</span>,
-<a href=#392 id=392 data-nosnippet>392</a>            <span class="self">Self</span>::CrawlerUrlFailed =&gt; <span class="string">"crawler_url_failed"</span>,
-<a href=#393 id=393 data-nosnippet>393</a>            <span class="self">Self</span>::CrawlerStopped =&gt; <span class="string">"crawler_stopped"</span>,
-<a href=#394 id=394 data-nosnippet>394</a>            <span class="self">Self</span>::CrawlerCancelled =&gt; <span class="string">"crawler_cancelled"</span>,
-<a href=#395 id=395 data-nosnippet>395</a>            <span class="self">Self</span>::CrawlerFinished =&gt; <span class="string">"crawler_finished"</span>,
-<a href=#396 id=396 data-nosnippet>396</a>        }
-<a href=#397 id=397 data-nosnippet>397</a>    }
-<a href=#398 id=398 data-nosnippet>398</a>}
+<a href=#382 id=382 data-nosnippet>382</a>    <span class="doccomment">/// `crawler_search_ready`.
+<a href=#383 id=383 data-nosnippet>383</a>    </span>CrawlerSearchReady,
+<a href=#384 id=384 data-nosnippet>384</a>    <span class="doccomment">/// `crawler_search_failed`.
+<a href=#385 id=385 data-nosnippet>385</a>    </span>CrawlerSearchFailed,
+<a href=#386 id=386 data-nosnippet>386</a>    <span class="doccomment">/// `crawler_updated`.
+<a href=#387 id=387 data-nosnippet>387</a>    </span>CrawlerUpdated,
+<a href=#388 id=388 data-nosnippet>388</a>}
+<a href=#389 id=389 data-nosnippet>389</a>
+<a href=#390 id=390 data-nosnippet>390</a><span class="kw">impl </span>CrawlerWebhookEvent {
+<a href=#391 id=391 data-nosnippet>391</a>    <span class="doccomment">/// Wire-format string.
+<a href=#392 id=392 data-nosnippet>392</a>    </span><span class="kw">pub fn </span>as_str(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str {
+<a href=#393 id=393 data-nosnippet>393</a>        <span class="kw">match </span><span class="self">self </span>{
+<a href=#394 id=394 data-nosnippet>394</a>            <span class="self">Self</span>::CrawlerStarted =&gt; <span class="string">"crawler_started"</span>,
+<a href=#395 id=395 data-nosnippet>395</a>            <span class="self">Self</span>::CrawlerUrlVisited =&gt; <span class="string">"crawler_url_visited"</span>,
+<a href=#396 id=396 data-nosnippet>396</a>            <span class="self">Self</span>::CrawlerUrlSkipped =&gt; <span class="string">"crawler_url_skipped"</span>,
+<a href=#397 id=397 data-nosnippet>397</a>            <span class="self">Self</span>::CrawlerUrlDiscovered =&gt; <span class="string">"crawler_url_discovered"</span>,
+<a href=#398 id=398 data-nosnippet>398</a>            <span class="self">Self</span>::CrawlerUrlFailed =&gt; <span class="string">"crawler_url_failed"</span>,
+<a href=#399 id=399 data-nosnippet>399</a>            <span class="self">Self</span>::CrawlerStopped =&gt; <span class="string">"crawler_stopped"</span>,
+<a href=#400 id=400 data-nosnippet>400</a>            <span class="self">Self</span>::CrawlerCancelled =&gt; <span class="string">"crawler_cancelled"</span>,
+<a href=#401 id=401 data-nosnippet>401</a>            <span class="self">Self</span>::CrawlerFinished =&gt; <span class="string">"crawler_finished"</span>,
+<a href=#402 id=402 data-nosnippet>402</a>            <span class="self">Self</span>::CrawlerSearchReady =&gt; <span class="string">"crawler_search_ready"</span>,
+<a href=#403 id=403 data-nosnippet>403</a>            <span class="self">Self</span>::CrawlerSearchFailed =&gt; <span class="string">"crawler_search_failed"</span>,
+<a href=#404 id=404 data-nosnippet>404</a>            <span class="self">Self</span>::CrawlerUpdated =&gt; <span class="string">"crawler_updated"</span>,
+<a href=#405 id=405 data-nosnippet>405</a>        }
+<a href=#406 id=406 data-nosnippet>406</a>    }
+<a href=#407 id=407 data-nosnippet>407</a>}
 </code></pre></div></section></main></body></html>

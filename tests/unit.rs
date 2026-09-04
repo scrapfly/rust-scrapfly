@@ -968,8 +968,16 @@ async fn crawl_prompt_done_frame_carries_thinking_tokens_and_dropped_sources() {
     // produced. The fixture still sends usage/tokens/cost/model because an
     // older API will; a type with no such field is what drops them.
     let rendered = format!("{:?}", done);
-    assert!(!rendered.contains("gemini"), "done frame leaks the model: {}", rendered);
-    assert!(!rendered.contains("token_count"), "done frame leaks tokens: {}", rendered);
+    assert!(
+        !rendered.contains("gemini"),
+        "done frame leaks the model: {}",
+        rendered
+    );
+    assert!(
+        !rendered.contains("token_count"),
+        "done frame leaks tokens: {}",
+        rendered
+    );
 }
 
 #[test]
@@ -1127,7 +1135,11 @@ fn crawler_webhook_decodes_the_search_deliveries_without_an_action() {
     assert_eq!(payload.search.vectors, 41);
     // Which model we embed with is not the customer's business.
     let search_rendered = format!("{:?}", payload.search);
-    assert!(!search_rendered.contains("gemini"), "status leaks the embedding model: {}", search_rendered);
+    assert!(
+        !search_rendered.contains("gemini"),
+        "status leaks the embedding model: {}",
+        search_rendered
+    );
 }
 
 #[test]
@@ -1212,4 +1224,1332 @@ fn crawler_webhook_rejects_a_body_it_cannot_type() {
 
     let no_event = br#"{"payload": {"crawler_uuid": "abc"}}"#;
     assert!(CrawlerWebhook::from_slice(no_event).is_err());
+}
+
+// ---------------------------------------------------------------------------
+// `unblocker` — the customer-facing name for the anti-bot feature. `asp` is
+// the deprecated alias that keeps working, and stays the key on the wire.
+// ---------------------------------------------------------------------------
+
+fn scrape_pairs(cfg: &ScrapeConfig) -> std::collections::HashMap<String, String> {
+    cfg.to_query_pairs()
+        .expect("pairs")
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>()
+}
+
+fn crawl_body(cfg: &CrawlerConfig) -> serde_json::Value {
+    serde_json::from_slice(&cfg.to_json_body().expect("serializable")).expect("valid json")
+}
+
+#[test]
+fn scrape_unblocker_is_sent_under_the_asp_wire_key() {
+    let cfg = ScrapeConfig::builder("https://example.com")
+        .unblocker(true)
+        .build()
+        .expect("build");
+    let pairs = scrape_pairs(&cfg);
+    assert_eq!(pairs.get("asp"), Some(&"true".to_string()));
+    // Emitting `unblocker` against a deployment that has not learned it on
+    // this parser would silently drop a paid feature. Not this release.
+    assert_eq!(pairs.get("unblocker"), None);
+}
+
+#[test]
+fn scrape_asp_alias_is_still_sent_under_the_asp_wire_key() {
+    let cfg = ScrapeConfig::builder("https://example.com")
+        .asp(true)
+        .build()
+        .expect("build");
+    let pairs = scrape_pairs(&cfg);
+    assert_eq!(pairs.get("asp"), Some(&"true".to_string()));
+    assert_eq!(pairs.get("unblocker"), None);
+}
+
+#[test]
+fn scrape_build_collapses_both_names_onto_one_decision() {
+    let cfg = ScrapeConfig::builder("https://example.com")
+        .unblocker(true)
+        .build()
+        .expect("build");
+    assert!(
+        cfg.asp,
+        "the one anti-bot slot must carry the resolved value"
+    );
+    assert!(cfg.unblocker_enabled());
+}
+
+#[test]
+fn scrape_explicit_asp_false_vetoes_unblocker_true_in_either_order() {
+    for cfg in [
+        ScrapeConfig::builder("https://example.com")
+            .unblocker(true)
+            .asp(false)
+            .build()
+            .expect("build"),
+        ScrapeConfig::builder("https://example.com")
+            .asp(false)
+            .unblocker(true)
+            .build()
+            .expect("build"),
+    ] {
+        assert!(!cfg.unblocker_enabled());
+        assert_eq!(scrape_pairs(&cfg).get("asp"), None);
+    }
+}
+
+#[test]
+fn scrape_explicit_asp_true_wins_over_unblocker_false_in_either_order() {
+    for cfg in [
+        ScrapeConfig::builder("https://example.com")
+            .unblocker(false)
+            .asp(true)
+            .build()
+            .expect("build"),
+        ScrapeConfig::builder("https://example.com")
+            .asp(true)
+            .unblocker(false)
+            .build()
+            .expect("build"),
+    ] {
+        assert!(cfg.unblocker_enabled());
+        assert_eq!(scrape_pairs(&cfg).get("asp"), Some(&"true".to_string()));
+    }
+}
+
+#[test]
+fn scrape_unblocker_false_leaves_the_feature_off() {
+    let cfg = ScrapeConfig::builder("https://example.com")
+        .unblocker(false)
+        .build()
+        .expect("build");
+    assert_eq!(scrape_pairs(&cfg).get("asp"), None);
+}
+
+#[test]
+fn scrape_neither_name_leaves_the_feature_off() {
+    let cfg = ScrapeConfig::builder("https://example.com")
+        .build()
+        .expect("build");
+    assert_eq!(scrape_pairs(&cfg).get("asp"), None);
+}
+
+#[test]
+fn scrape_unblocker_works_on_the_struct_literal_path() {
+    // One slot, under its wire name. There is deliberately no second
+    // `unblocker` field: two fields could disagree, and then neither name
+    // alone could turn the feature off.
+    let cfg = ScrapeConfig {
+        url: "https://example.com".to_string(),
+        asp: true,
+        ..Default::default()
+    };
+    assert!(cfg.unblocker_enabled());
+    assert_eq!(scrape_pairs(&cfg).get("asp"), Some(&"true".to_string()));
+}
+
+#[test]
+fn scrape_disabling_after_build_turns_the_feature_off_under_either_name() {
+    // A shared template built once and opted out of per request is existing
+    // customer code. Whichever name the caller reaches for, the write has to
+    // land on the same slot the serializer reads, or the paid feature stays
+    // on and is billed against an explicit opt-out.
+    let mut legacy = ScrapeConfig::builder("https://example.com")
+        .asp(true)
+        .build()
+        .expect("build");
+    legacy.asp = false;
+    assert!(!legacy.unblocker_enabled());
+    assert_eq!(scrape_pairs(&legacy).get("asp"), None);
+
+    let mut current = ScrapeConfig::builder("https://example.com")
+        .unblocker(true)
+        .build()
+        .expect("build");
+    current.set_unblocker(false);
+    assert!(!current.unblocker_enabled());
+    assert_eq!(scrape_pairs(&current).get("asp"), None);
+
+    // Clone-and-tweak off a template hits the same path.
+    let template = ScrapeConfig::builder("https://example.com")
+        .unblocker(true)
+        .build()
+        .expect("build");
+    let mut tweaked = template.clone();
+    tweaked.set_unblocker(false);
+    assert_eq!(scrape_pairs(&tweaked).get("asp"), None);
+    assert_eq!(
+        scrape_pairs(&template).get("asp"),
+        Some(&"true".to_string()),
+        "the template itself must be untouched"
+    );
+}
+
+#[test]
+fn scrape_enabling_after_build_turns_the_feature_on_under_either_name() {
+    let mut by_field = ScrapeConfig::builder("https://example.com")
+        .build()
+        .expect("build");
+    by_field.asp = true;
+    assert_eq!(
+        scrape_pairs(&by_field).get("asp"),
+        Some(&"true".to_string())
+    );
+
+    let mut by_setter = ScrapeConfig::builder("https://example.com")
+        .build()
+        .expect("build");
+    by_setter.set_unblocker(true);
+    assert!(by_setter.asp, "set_unblocker writes the one slot");
+    assert_eq!(
+        scrape_pairs(&by_setter).get("asp"),
+        Some(&"true".to_string())
+    );
+}
+
+#[test]
+fn scrape_asp_literal_still_works_and_defaults_stay_off() {
+    let on = ScrapeConfig {
+        url: "https://example.com".to_string(),
+        asp: true,
+        ..Default::default()
+    };
+    assert_eq!(scrape_pairs(&on).get("asp"), Some(&"true".to_string()));
+
+    let off = ScrapeConfig {
+        url: "https://example.com".to_string(),
+        ..Default::default()
+    };
+    assert_eq!(scrape_pairs(&off).get("asp"), None);
+}
+
+#[test]
+fn crawler_unblocker_is_sent_under_the_asp_body_key() {
+    let cfg = CrawlerConfig::builder("https://example.com")
+        .unblocker(true)
+        .build()
+        .expect("build");
+    let body = crawl_body(&cfg);
+    assert_eq!(body["asp"], serde_json::Value::Bool(true));
+    assert!(body.get("unblocker").is_none());
+    assert!(cfg.unblocker_enabled());
+}
+
+#[test]
+fn crawler_asp_alias_is_still_sent_under_the_asp_body_key() {
+    let cfg = CrawlerConfig::builder("https://example.com")
+        .asp(true)
+        .build()
+        .expect("build");
+    let body = crawl_body(&cfg);
+    assert_eq!(body["asp"], serde_json::Value::Bool(true));
+    assert!(body.get("unblocker").is_none());
+}
+
+#[test]
+fn crawler_explicit_asp_false_vetoes_unblocker_true_in_either_order() {
+    for cfg in [
+        CrawlerConfig::builder("https://example.com")
+            .unblocker(true)
+            .asp(false)
+            .build()
+            .expect("build"),
+        CrawlerConfig::builder("https://example.com")
+            .asp(false)
+            .unblocker(true)
+            .build()
+            .expect("build"),
+    ] {
+        assert!(!cfg.unblocker_enabled());
+        assert!(crawl_body(&cfg).get("asp").is_none());
+    }
+}
+
+#[test]
+fn crawler_explicit_asp_true_wins_over_unblocker_false_in_either_order() {
+    for cfg in [
+        CrawlerConfig::builder("https://example.com")
+            .unblocker(false)
+            .asp(true)
+            .build()
+            .expect("build"),
+        CrawlerConfig::builder("https://example.com")
+            .asp(true)
+            .unblocker(false)
+            .build()
+            .expect("build"),
+    ] {
+        assert!(cfg.unblocker_enabled());
+        assert_eq!(crawl_body(&cfg)["asp"], serde_json::Value::Bool(true));
+    }
+}
+
+#[test]
+fn crawler_unblocker_off_omits_the_key() {
+    let cfg = CrawlerConfig::builder("https://example.com")
+        .unblocker(false)
+        .build()
+        .expect("build");
+    assert!(crawl_body(&cfg).get("asp").is_none());
+}
+
+#[test]
+fn crawler_disabling_after_build_turns_the_feature_off_under_either_name() {
+    let mut legacy = CrawlerConfig::builder("https://example.com")
+        .asp(true)
+        .build()
+        .expect("build");
+    legacy.asp = false;
+    assert!(!legacy.unblocker_enabled());
+    assert!(crawl_body(&legacy).get("asp").is_none());
+
+    let mut current = CrawlerConfig::builder("https://example.com")
+        .unblocker(true)
+        .build()
+        .expect("build");
+    current.set_unblocker(false);
+    assert!(!current.unblocker_enabled());
+    assert!(crawl_body(&current).get("asp").is_none());
+}
+
+#[test]
+fn crawler_unblocker_reaches_the_multipart_config_part() {
+    let cfg = CrawlerConfig::builder_url_list(["https://example.com/a"])
+        .unblocker(true)
+        .build()
+        .expect("build");
+    let (body, _content_type) = cfg.to_multipart_body().expect("multipart");
+    let body = String::from_utf8(body).expect("utf8");
+    assert!(body.contains("\"asp\":true"), "body was: {}", body);
+    assert!(!body.contains("unblocker"), "body was: {}", body);
+}
+
+// ---------------------------------------------------------------------------
+// `unblocker` / `asp` PARITY MATRIX
+//
+// The guarantee a customer migrating from `asp` to `unblocker` relies on is
+// not "unblocker sets the flag" — it is that the two names are
+// INDISTINGUISHABLE. So the tests below compare WHOLE emitted outputs (the
+// full query-pair list, the full JSON body, the full multipart body, plus the
+// whole stored struct) for two configs that differ only in which name the
+// caller reached for. Comparing everything is the point: a divergence in any
+// other field fails here, where a targeted assertion on the one key would
+// pass. The truth table then walks every combination of the two names,
+// including the conflicting rows.
+// ---------------------------------------------------------------------------
+
+use scrapfly_sdk::config::crawler::CrawlerConfigBuilder;
+use scrapfly_sdk::config::scrape::ScrapeConfigBuilder;
+use scrapfly_sdk::{
+    CrawlerContentFormat, ExtractionModel, Format, FormatOption, HttpMethod, ProxyPool,
+    ScreenshotFlag,
+};
+
+/// Which of the two input names a case reaches for.
+#[derive(Clone, Copy, Debug)]
+enum Input {
+    /// The deprecated name, kept working forever.
+    Asp,
+    /// The current customer-facing name.
+    Unblocker,
+}
+
+/// Order in which both names are applied when a case supplies both.
+#[derive(Clone, Copy, Debug)]
+enum Order {
+    AspFirst,
+    UnblockerFirst,
+}
+
+/// One row of the truth table: what the caller supplied under each name, and
+/// the outcome the decided precedence produces.
+struct ParityRow {
+    case: &'static str,
+    asp: Option<bool>,
+    unblocker: Option<bool>,
+    enabled: bool,
+}
+
+/// Precedence, identical in every Scrapfly SDK: an explicitly supplied `asp`
+/// wins; `unblocker` is consulted only when `asp` was not supplied; the two
+/// are never OR-ed.
+///
+/// CROSS-SDK NOTE on the two conflict rows. Python, TypeScript and Rust all
+/// resolve `asp=false, unblocker=true` to OFF, as pinned here. GO ANSWERS ON
+/// for that one row: its `ASP` field is a plain `bool`, so a supplied `false`
+/// is byte-identical to the zero value and cannot be honoured. That divergence
+/// is documented in go/unblocker.go and go/README.md, and the Go test row that
+/// pins it is named
+/// GO_LANGUAGE_FORCED_EXCEPTION_documented_divergence_not_a_bug. It is the ONLY
+/// cell where the four SDKs disagree; nothing here may be "fixed" to match Go.
+const PARITY_MATRIX: &[ParityRow] = &[
+    ParityRow {
+        case: "neither name supplied",
+        asp: None,
+        unblocker: None,
+        enabled: false,
+    },
+    ParityRow {
+        case: "unblocker only = true",
+        asp: None,
+        unblocker: Some(true),
+        enabled: true,
+    },
+    ParityRow {
+        case: "unblocker only = false",
+        asp: None,
+        unblocker: Some(false),
+        enabled: false,
+    },
+    ParityRow {
+        case: "asp only = true",
+        asp: Some(true),
+        unblocker: None,
+        enabled: true,
+    },
+    ParityRow {
+        case: "asp only = false",
+        asp: Some(false),
+        unblocker: None,
+        enabled: false,
+    },
+    ParityRow {
+        case: "both supplied, agreeing on true",
+        asp: Some(true),
+        unblocker: Some(true),
+        enabled: true,
+    },
+    ParityRow {
+        case: "both supplied, agreeing on false",
+        asp: Some(false),
+        unblocker: Some(false),
+        enabled: false,
+    },
+    ParityRow {
+        case: "conflict: asp=false vetoes unblocker=true",
+        asp: Some(false),
+        unblocker: Some(true),
+        enabled: false,
+    },
+    ParityRow {
+        case: "conflict: asp=true wins over unblocker=false",
+        asp: Some(true),
+        unblocker: Some(false),
+        enabled: true,
+    },
+];
+
+/// Call order only matters when both names are supplied; the precedence is
+/// order-independent, so both orders are exercised for those rows.
+fn orders(row: &ParityRow) -> &'static [Order] {
+    if row.asp.is_some() && row.unblocker.is_some() {
+        &[Order::AspFirst, Order::UnblockerFirst]
+    } else {
+        &[Order::AspFirst]
+    }
+}
+
+fn apply_scrape(b: ScrapeConfigBuilder, row: &ParityRow, order: Order) -> ScrapeConfigBuilder {
+    match (row.asp, row.unblocker, order) {
+        (Some(a), Some(u), Order::AspFirst) => b.asp(a).unblocker(u),
+        (Some(a), Some(u), Order::UnblockerFirst) => b.unblocker(u).asp(a),
+        (Some(a), None, _) => b.asp(a),
+        (None, Some(u), _) => b.unblocker(u),
+        (None, None, _) => b,
+    }
+}
+
+fn apply_crawler(b: CrawlerConfigBuilder, row: &ParityRow, order: Order) -> CrawlerConfigBuilder {
+    match (row.asp, row.unblocker, order) {
+        (Some(a), Some(u), Order::AspFirst) => b.asp(a).unblocker(u),
+        (Some(a), Some(u), Order::UnblockerFirst) => b.unblocker(u).asp(a),
+        (Some(a), None, _) => b.asp(a),
+        (None, Some(u), _) => b.unblocker(u),
+        (None, None, _) => b,
+    }
+}
+
+/// Emitted query pairs in emission order — the whole output, not a lookup.
+/// `to_query_pairs` pushes in a fixed sequence and the map-backed fields are
+/// `BTreeMap`s, so the order is deterministic and part of the contract.
+fn scrape_pairs_ordered(cfg: &ScrapeConfig) -> Vec<(String, String)> {
+    cfg.to_query_pairs().expect("pairs")
+}
+
+/// The literal query string the request would carry, built the way
+/// `Client::build_url` builds it (percent-encoding included).
+fn scrape_query_string(cfg: &ScrapeConfig) -> String {
+    let mut u = url::Url::parse("https://api.scrapfly.io/scrape").expect("base url");
+    {
+        let mut q = u.query_pairs_mut();
+        for (k, v) in scrape_pairs_ordered(cfg) {
+            q.append_pair(&k, &v);
+        }
+    }
+    u.query().unwrap_or_default().to_string()
+}
+
+/// A whole-output comparison is only as strong as the output has fields to
+/// diverge in. If a fixture is ever trimmed, or a serializer regresses to
+/// emitting almost nothing, every equality below would still pass while its
+/// name claimed it compared "the whole output". This floor stops that; the Go
+/// SDK's matrix carries the same guard (`len(legacy) < 25`).
+const MIN_LOADED_PAIRS: usize = 25;
+
+fn assert_not_vacuous<T>(emitted: &[T], what: &str) {
+    assert!(
+        emitted.len() >= MIN_LOADED_PAIRS,
+        "{what} emits only {} entries; a whole-output comparison over that proves \
+         almost nothing. Expected at least {MIN_LOADED_PAIRS}.",
+        emitted.len()
+    );
+}
+
+/// A config exercising a wide slice of the surface, so that whole-output
+/// equality proves the two input names diverge in NOTHING, not just in the
+/// anti-bot key.
+fn loaded_scrape(input: Input, v: bool) -> ScrapeConfig {
+    let b = loaded_scrape_builder();
+    let b = match input {
+        Input::Asp => b.asp(v),
+        Input::Unblocker => b.unblocker(v),
+    };
+    b.build().expect("build")
+}
+
+/// The loaded scrape surface WITHOUT the anti-bot toggle, so the truth table
+/// can apply both names to it in either order.
+fn loaded_scrape_builder() -> ScrapeConfigBuilder {
+    ScrapeConfig::builder("https://example.com/parity")
+        .method(HttpMethod::Post)
+        .body("payload=1")
+        .header("X-Test", "value")
+        .cookie("sid", "abc")
+        .country("US")
+        .proxy_pool(ProxyPool::PublicResidentialPool)
+        .render_js(true)
+        .wait_for_selector(".ready")
+        .rendering_wait(250)
+        .rendering_stage("domcontentloaded")
+        .geolocation("48.85,2.35")
+        .auto_scroll(true)
+        .js("window.x = 1;")
+        .js_scenario(serde_json::json!([{"click": {"selector": ".more"}}]))
+        .screenshot("hero", "fullpage")
+        .screenshot_flag(ScreenshotFlag::HighQuality)
+        .cache(true)
+        .cache_ttl(60)
+        .cache_clear(true)
+        .timeout(30000)
+        .cost_budget(25)
+        .retry(false)
+        .session("parity")
+        .session_sticky_proxy(false)
+        .tag("a")
+        .tag("b")
+        .webhook("hook")
+        .debug(true)
+        .ssl(true)
+        .dns(true)
+        .correlation_id("cid-1")
+        .format(Format::Markdown)
+        .format_option(FormatOption::OnlyContent)
+        .extraction_model(ExtractionModel::Product)
+        .os("linux")
+        .lang("fr")
+        .lang("en")
+        .browser_brand("chrome")
+        .proxified_response()
+}
+
+fn loaded_crawler(input: Input, v: bool) -> CrawlerConfig {
+    let b = loaded_crawler_builder();
+    let b = match input {
+        Input::Asp => b.asp(v),
+        Input::Unblocker => b.unblocker(v),
+    };
+    b.build().expect("build")
+}
+
+/// The loaded crawler surface WITHOUT the anti-bot toggle.
+fn loaded_crawler_builder() -> CrawlerConfigBuilder {
+    CrawlerConfig::builder("https://example.com/parity")
+        .page_limit(10)
+        .max_depth(3)
+        .max_duration(600)
+        .max_api_credit(100)
+        .exclude_paths(vec!["/private".to_string()])
+        .ignore_base_path_restriction(true)
+        .follow_external_links(true)
+        .allowed_external_domains(vec!["cdn.example.com".to_string()])
+        .follow_internal_subdomains(false)
+        .allowed_internal_subdomains(vec!["shop.example.com".to_string()])
+        .header("X-Test", "value")
+        .delay(100)
+        .user_agent("parity/1.0")
+        .max_concurrency(4)
+        .rendering_delay(500)
+        .use_sitemaps(true)
+        .ignore_no_follow(true)
+        .respect_robots_txt(false)
+        .cache(true)
+        .cache_ttl(60)
+        .cache_clear(true)
+        .content_format(CrawlerContentFormat::Markdown)
+        .extraction_rules(serde_json::json!({"title": "h1"}))
+        .search(true)
+        .refresh(true)
+        .refresh_interval(REFRESH_MIN_INTERVAL)
+        .proxy_pool("public_residential_pool")
+        .country("us")
+        .webhook_name("hook")
+        .webhook_event(CrawlerWebhookEvent::CrawlerStarted)
+}
+
+fn loaded_crawler_url_list(input: Input, v: bool) -> CrawlerConfig {
+    let b = CrawlerConfig::builder_url_list(["https://example.com/a", "https://example.com/b"])
+        .page_limit(10)
+        .header("X-Test", "value")
+        .content_format(CrawlerContentFormat::Markdown)
+        .country("us");
+    let b = match input {
+        Input::Asp => b.asp(v),
+        Input::Unblocker => b.unblocker(v),
+    };
+    b.build().expect("build")
+}
+
+/// Multipart body with the random boundary folded to a fixed token, so two
+/// bodies from two separate calls are comparable as whole byte strings.
+fn multipart_normalized(cfg: &CrawlerConfig) -> (String, String) {
+    let (body, content_type) = cfg.to_multipart_body().expect("multipart");
+    let boundary = content_type
+        .rsplit("boundary=")
+        .next()
+        .expect("boundary in content-type")
+        .to_string();
+    let body = String::from_utf8(body).expect("utf8 body");
+    (
+        body.replace(&boundary, "BOUNDARY"),
+        content_type.replace(&boundary, "BOUNDARY"),
+    )
+}
+
+// --- 1. EQUIVALENCE: whole emitted output, both names, both values ---------
+
+#[test]
+fn scrape_asp_and_unblocker_emit_an_identical_whole_output() {
+    for v in [true, false] {
+        let by_asp = loaded_scrape(Input::Asp, v);
+        let by_unblocker = loaded_scrape(Input::Unblocker, v);
+
+        assert_not_vacuous(&scrape_pairs_ordered(&by_asp), "loaded scrape query pairs");
+
+        // The whole pair list, in emission order — not a lookup of one key.
+        assert_eq!(
+            scrape_pairs_ordered(&by_asp),
+            scrape_pairs_ordered(&by_unblocker),
+            ".asp({v}) and .unblocker({v}) must emit the same query parameters, all of them"
+        );
+        // The literal query string the request would carry.
+        assert_eq!(
+            scrape_query_string(&by_asp),
+            scrape_query_string(&by_unblocker),
+            ".asp({v}) and .unblocker({v}) must produce the same request URL"
+        );
+        // The whole stored struct: every field, not only the anti-bot slot.
+        assert_eq!(
+            format!("{:?}", by_asp),
+            format!("{:?}", by_unblocker),
+            ".asp({v}) and .unblocker({v}) must store the same config"
+        );
+    }
+}
+
+#[test]
+fn crawler_asp_and_unblocker_emit_an_identical_whole_body() {
+    for v in [true, false] {
+        let by_asp = loaded_crawler(Input::Asp, v);
+        let by_unblocker = loaded_crawler(Input::Unblocker, v);
+
+        let keys: Vec<String> = serde_json::to_value(&by_asp)
+            .expect("serialize")
+            .as_object()
+            .expect("object")
+            .keys()
+            .cloned()
+            .collect();
+        assert_not_vacuous(&keys, "loaded crawl body");
+
+        // Byte-identical POST /crawl body, every key.
+        assert_eq!(
+            String::from_utf8(by_asp.to_json_body().expect("body")).expect("utf8"),
+            String::from_utf8(by_unblocker.to_json_body().expect("body")).expect("utf8"),
+            ".asp({v}) and .unblocker({v}) must serialize the same crawl body"
+        );
+        assert_eq!(
+            format!("{:?}", by_asp),
+            format!("{:?}", by_unblocker),
+            ".asp({v}) and .unblocker({v}) must store the same config"
+        );
+    }
+}
+
+#[test]
+fn crawler_url_list_asp_and_unblocker_emit_an_identical_multipart_body() {
+    // The url_list crawl posts multipart, a second emitted form of the same
+    // config; the config part must not diverge between the two names either.
+    for v in [true, false] {
+        let by_asp = multipart_normalized(&loaded_crawler_url_list(Input::Asp, v));
+        let by_unblocker = multipart_normalized(&loaded_crawler_url_list(Input::Unblocker, v));
+        assert_eq!(
+            by_asp, by_unblocker,
+            ".asp({v}) and .unblocker({v}) must produce the same multipart body and content type"
+        );
+    }
+}
+
+// --- 2. THE FULL TRUTH TABLE ----------------------------------------------
+
+#[test]
+fn scrape_unblocker_truth_table_resolves_and_emits_as_decided() {
+    for row in PARITY_MATRIX {
+        for &order in orders(row) {
+            let cfg = apply_scrape(
+                ScrapeConfig::builder("https://example.com/matrix"),
+                row,
+                order,
+            );
+            let cfg = cfg.build().expect("build");
+            let ctx = format!("{} [{:?}]", row.case, order);
+
+            // Resolved outcome, read under both names.
+            assert_eq!(
+                cfg.unblocker_enabled(),
+                row.enabled,
+                "{ctx}: unblocker_enabled()"
+            );
+            assert_eq!(cfg.asp, row.enabled, "{ctx}: the `asp` slot");
+
+            // Emitted wire key.
+            let pairs = scrape_pairs_ordered(&cfg);
+            let emitted = pairs
+                .iter()
+                .find(|(k, _)| k == "asp")
+                .map(|(_, v)| v.as_str());
+            assert_eq!(
+                emitted,
+                row.enabled.then_some("true"),
+                "{ctx}: emitted `asp` query parameter"
+            );
+        }
+    }
+}
+
+#[test]
+fn crawler_unblocker_truth_table_resolves_and_emits_as_decided() {
+    for row in PARITY_MATRIX {
+        for &order in orders(row) {
+            let cfg = apply_crawler(
+                CrawlerConfig::builder("https://example.com/matrix"),
+                row,
+                order,
+            );
+            let cfg = cfg.build().expect("build");
+            let ctx = format!("{} [{:?}]", row.case, order);
+
+            assert_eq!(
+                cfg.unblocker_enabled(),
+                row.enabled,
+                "{ctx}: unblocker_enabled()"
+            );
+            assert_eq!(cfg.asp, row.enabled, "{ctx}: the `asp` slot");
+
+            let body = crawl_body(&cfg);
+            let want = row.enabled.then_some(serde_json::Value::Bool(true));
+            assert_eq!(
+                body.as_object().expect("object body").get("asp"),
+                want.as_ref(),
+                "{ctx}: emitted `asp` body key"
+            );
+        }
+    }
+}
+
+#[test]
+fn crawler_unblocker_truth_table_reaches_the_multipart_and_remote_list_paths() {
+    // `builder`, `builder_url_list` and `builder_remote_url_list` each
+    // initialize the same three suppliedness flags, and `to_multipart_body` is a
+    // SECOND serializer of the resolved value. Driving the whole matrix (not
+    // just the two equivalence pairs) through both closes the gap where a
+    // conflict row could resolve one way in the JSON body and another in the
+    // multipart config part.
+    for row in PARITY_MATRIX {
+        for &order in orders(row) {
+            let ctx = format!("{} [{:?}]", row.case, order);
+
+            // In-memory url_list -> multipart.
+            let multipart_cfg = apply_crawler(
+                CrawlerConfig::builder_url_list(["https://example.com/a", "https://example.com/b"]),
+                row,
+                order,
+            )
+            .build()
+            .expect("build");
+            assert_eq!(
+                multipart_cfg.unblocker_enabled(),
+                row.enabled,
+                "{ctx}: builder_url_list resolution"
+            );
+            let (multipart, _) = multipart_normalized(&multipart_cfg);
+            assert_eq!(
+                multipart.contains("\"asp\":true"),
+                row.enabled,
+                "{ctx}: multipart config part must carry `asp` exactly when the row is on: {multipart}"
+            );
+            assert!(
+                !multipart.contains("unblocker"),
+                "{ctx}: the new name reached the multipart body: {multipart}"
+            );
+
+            // remote_url_list -> JSON body, third constructor.
+            let remote_cfg = apply_crawler(
+                CrawlerConfig::builder_remote_url_list("https://example.com/urls.txt"),
+                row,
+                order,
+            )
+            .build()
+            .expect("build");
+            assert_eq!(
+                remote_cfg.unblocker_enabled(),
+                row.enabled,
+                "{ctx}: builder_remote_url_list resolution"
+            );
+            let want = row.enabled.then_some(serde_json::Value::Bool(true));
+            assert_eq!(
+                crawl_body(&remote_cfg)
+                    .as_object()
+                    .expect("object body")
+                    .get("asp"),
+                want.as_ref(),
+                "{ctx}: remote_url_list body key"
+            );
+        }
+    }
+}
+
+#[test]
+fn unblocker_truth_table_holds_on_the_loaded_configs_too() {
+    // The tables above build from a bare `builder(url)`. A defect that only
+    // fires when a conflicting name pair coexists with other populated options
+    // — a validation branch, a mutually-exclusive-option check, an ordering
+    // effect — would be invisible there. The Go matrix seeds every row from its
+    // loaded base for exactly this reason; this is the Rust equivalent.
+    for row in PARITY_MATRIX {
+        for &order in orders(row) {
+            let ctx = format!("{} [{:?}]", row.case, order);
+
+            let scrape = apply_scrape(loaded_scrape_builder(), row, order)
+                .build()
+                .expect("build");
+            assert_eq!(scrape.unblocker_enabled(), row.enabled, "{ctx}: loaded scrape");
+            let pairs = scrape_pairs_ordered(&scrape);
+            assert_not_vacuous(&pairs, "loaded scrape query pairs");
+            assert_eq!(
+                pairs
+                    .iter()
+                    .find(|(k, _)| k == "asp")
+                    .map(|(_, v)| v.as_str()),
+                row.enabled.then_some("true"),
+                "{ctx}: loaded scrape emitted `asp`"
+            );
+
+            let crawler = apply_crawler(loaded_crawler_builder(), row, order)
+                .build()
+                .expect("build");
+            assert_eq!(crawler.unblocker_enabled(), row.enabled, "{ctx}: loaded crawler");
+            let want = row.enabled.then_some(serde_json::Value::Bool(true));
+            assert_eq!(
+                crawl_body(&crawler)
+                    .as_object()
+                    .expect("object body")
+                    .get("asp"),
+                want.as_ref(),
+                "{ctx}: loaded crawl body"
+            );
+        }
+    }
+}
+
+#[test]
+fn unblocker_matrix_rows_with_the_same_outcome_are_indistinguishable() {
+    // Stronger than the per-row assertions: every path that resolves to the
+    // same outcome must produce the SAME whole output, whichever name (or
+    // both, in either order) got the caller there.
+    for enabled in [true, false] {
+        let mut scrape_outputs: Vec<(String, Vec<(String, String)>)> = Vec::new();
+        let mut crawl_outputs: Vec<(String, String)> = Vec::new();
+        for row in PARITY_MATRIX.iter().filter(|r| r.enabled == enabled) {
+            for &order in orders(row) {
+                let ctx = format!("{} [{:?}]", row.case, order);
+                let scrape = apply_scrape(
+                    ScrapeConfig::builder("https://example.com/matrix"),
+                    row,
+                    order,
+                )
+                .build()
+                .expect("build");
+                scrape_outputs.push((ctx.clone(), scrape_pairs_ordered(&scrape)));
+
+                let crawl = apply_crawler(
+                    CrawlerConfig::builder("https://example.com/matrix"),
+                    row,
+                    order,
+                )
+                .build()
+                .expect("build");
+                crawl_outputs.push((
+                    ctx,
+                    String::from_utf8(crawl.to_json_body().expect("body")).expect("utf8"),
+                ));
+            }
+        }
+
+        let (first_ctx, first) = scrape_outputs.first().cloned().expect("rows");
+        for (ctx, out) in &scrape_outputs {
+            assert_eq!(
+                out, &first,
+                "scrape output for {ctx} differs from {first_ctx} although both resolve to enabled={enabled}"
+            );
+        }
+        let (first_ctx, first) = crawl_outputs.first().cloned().expect("rows");
+        for (ctx, out) in &crawl_outputs {
+            assert_eq!(
+                out, &first,
+                "crawl body for {ctx} differs from {first_ctx} although both resolve to enabled={enabled}"
+            );
+        }
+    }
+}
+
+// --- 3. WIRE KEY -----------------------------------------------------------
+
+#[test]
+fn unblocker_never_reaches_the_wire_under_either_input_name() {
+    // Emitting the new name, or both names, against a deployment that has not
+    // learned it on this parser silently drops a paid feature: the scrape is
+    // billed and returns a blocked page. `asp` is the only key that ships.
+    for row in PARITY_MATRIX {
+        for &order in orders(row) {
+            let ctx = format!("{} [{:?}]", row.case, order);
+
+            let scrape = apply_scrape(
+                ScrapeConfig::builder("https://example.com/matrix"),
+                row,
+                order,
+            )
+            .build()
+            .expect("build");
+            for (k, _) in scrape_pairs_ordered(&scrape) {
+                assert!(
+                    !k.contains("unblocker"),
+                    "{ctx}: query parameter {k:?} carries the new name"
+                );
+            }
+            assert!(
+                !scrape_query_string(&scrape).contains("unblocker"),
+                "{ctx}: request URL carries the new name"
+            );
+
+            let crawl = apply_crawler(
+                CrawlerConfig::builder("https://example.com/matrix"),
+                row,
+                order,
+            )
+            .build()
+            .expect("build");
+            let body = String::from_utf8(crawl.to_json_body().expect("body")).expect("utf8");
+            assert!(
+                !body.contains("unblocker"),
+                "{ctx}: crawl body carries the new name: {body}"
+            );
+        }
+    }
+
+    // The loaded configs and the multipart form too, not just the bare ones.
+    for v in [true, false] {
+        for input in [Input::Asp, Input::Unblocker] {
+            assert!(!scrape_query_string(&loaded_scrape(input, v)).contains("unblocker"));
+            let body = String::from_utf8(loaded_crawler(input, v).to_json_body().expect("body"))
+                .expect("utf8");
+            assert!(!body.contains("unblocker"));
+            let (multipart, _) = multipart_normalized(&loaded_crawler_url_list(input, v));
+            assert!(!multipart.contains("unblocker"), "{multipart}");
+        }
+    }
+}
+
+// --- 4. POST-CONSTRUCTION PARITY ------------------------------------------
+
+#[test]
+fn scrape_post_construction_names_agree_in_both_directions() {
+    for v in [true, false] {
+        // Write under the old name, read under the new one.
+        let mut by_field = ScrapeConfig::builder("https://example.com/mut")
+            .build()
+            .expect("build");
+        by_field.asp = v;
+        assert_eq!(
+            by_field.unblocker_enabled(),
+            v,
+            "unblocker_enabled() must report what the `asp` field holds"
+        );
+
+        // Write under the new name, read under the old one.
+        let mut by_setter = ScrapeConfig::builder("https://example.com/mut")
+            .build()
+            .expect("build");
+        by_setter.set_unblocker(v);
+        assert_eq!(
+            by_setter.asp, v,
+            "set_unblocker() must write the slot the `asp` field reads"
+        );
+
+        // And both mutations put the same whole thing on the wire.
+        assert_eq!(
+            scrape_pairs_ordered(&by_field),
+            scrape_pairs_ordered(&by_setter)
+        );
+        assert_eq!(
+            scrape_pairs_ordered(&by_field)
+                .iter()
+                .find(|(k, _)| k == "asp")
+                .map(|(_, val)| val.as_str()),
+            v.then_some("true")
+        );
+    }
+}
+
+#[test]
+fn scrape_mutating_after_build_changes_the_wire_under_either_name() {
+    // A template built once and opted in or out of per request is existing
+    // customer code; the write has to reach the serializer under both names.
+    for start in [true, false] {
+        let flipped = !start;
+
+        let mut by_field = ScrapeConfig::builder("https://example.com/mut")
+            .unblocker(start)
+            .build()
+            .expect("build");
+        by_field.asp = flipped;
+
+        let mut by_setter = ScrapeConfig::builder("https://example.com/mut")
+            .asp(start)
+            .build()
+            .expect("build");
+        by_setter.set_unblocker(flipped);
+
+        for cfg in [&by_field, &by_setter] {
+            assert_eq!(cfg.unblocker_enabled(), flipped);
+            assert_eq!(
+                scrape_pairs_ordered(cfg)
+                    .iter()
+                    .find(|(k, _)| k == "asp")
+                    .map(|(_, val)| val.as_str()),
+                flipped.then_some("true"),
+                "the wire must follow the post-build mutation"
+            );
+        }
+        assert_eq!(
+            scrape_pairs_ordered(&by_field),
+            scrape_pairs_ordered(&by_setter),
+            "mutating by field and by setter must leave identical output"
+        );
+    }
+}
+
+#[test]
+fn crawler_post_construction_names_agree_in_both_directions() {
+    for v in [true, false] {
+        let mut by_field = CrawlerConfig::builder("https://example.com/mut")
+            .build()
+            .expect("build");
+        by_field.asp = v;
+        assert_eq!(by_field.unblocker_enabled(), v);
+
+        let mut by_setter = CrawlerConfig::builder("https://example.com/mut")
+            .build()
+            .expect("build");
+        by_setter.set_unblocker(v);
+        assert_eq!(by_setter.asp, v);
+
+        assert_eq!(
+            String::from_utf8(by_field.to_json_body().expect("body")).expect("utf8"),
+            String::from_utf8(by_setter.to_json_body().expect("body")).expect("utf8")
+        );
+        let want = v.then_some(serde_json::Value::Bool(true));
+        assert_eq!(
+            crawl_body(&by_field)
+                .as_object()
+                .expect("object body")
+                .get("asp"),
+            want.as_ref()
+        );
+    }
+}
+
+#[test]
+fn crawler_mutating_after_build_changes_the_wire_under_either_name() {
+    for start in [true, false] {
+        let flipped = !start;
+
+        let mut by_field = CrawlerConfig::builder("https://example.com/mut")
+            .unblocker(start)
+            .build()
+            .expect("build");
+        by_field.asp = flipped;
+
+        let mut by_setter = CrawlerConfig::builder("https://example.com/mut")
+            .asp(start)
+            .build()
+            .expect("build");
+        by_setter.set_unblocker(flipped);
+
+        let want = flipped.then_some(serde_json::Value::Bool(true));
+        for cfg in [&by_field, &by_setter] {
+            assert_eq!(cfg.unblocker_enabled(), flipped);
+            assert_eq!(
+                crawl_body(cfg).as_object().expect("object body").get("asp"),
+                want.as_ref(),
+                "the wire must follow the post-build mutation"
+            );
+        }
+        assert_eq!(
+            String::from_utf8(by_field.to_json_body().expect("body")).expect("utf8"),
+            String::from_utf8(by_setter.to_json_body().expect("body")).expect("utf8")
+        );
+    }
+}
+
+// --- The struct-literal path ----------------------------------------------
+
+#[test]
+fn scrape_struct_literal_asp_matches_the_unblocker_builder() {
+    // Customers who fill the struct directly write `asp`, the one storage
+    // slot. That path must land on exactly the output the current name's
+    // builder produces. `session_sticky_proxy: true` mirrors the builder's
+    // own default (a session keeps one exit IP unless the caller opts out).
+    for v in [true, false] {
+        let literal = ScrapeConfig {
+            url: "https://example.com/literal".to_string(),
+            session_sticky_proxy: true,
+            asp: v,
+            ..Default::default()
+        };
+        let built = ScrapeConfig::builder("https://example.com/literal")
+            .unblocker(v)
+            .build()
+            .expect("build");
+        assert_eq!(literal.unblocker_enabled(), built.unblocker_enabled());
+        assert_eq!(
+            scrape_pairs_ordered(&literal),
+            scrape_pairs_ordered(&built),
+            "the struct-literal path must emit what .unblocker({v}) emits"
+        );
+        assert_eq!(format!("{:?}", literal), format!("{:?}", built));
+    }
+}
+
+#[test]
+fn crawler_struct_literal_asp_matches_the_unblocker_builder() {
+    for v in [true, false] {
+        let literal = CrawlerConfig {
+            url: "https://example.com/literal".to_string(),
+            asp: v,
+            ..Default::default()
+        };
+        let built = CrawlerConfig::builder("https://example.com/literal")
+            .unblocker(v)
+            .build()
+            .expect("build");
+        assert_eq!(literal.unblocker_enabled(), built.unblocker_enabled());
+        assert_eq!(
+            String::from_utf8(literal.to_json_body().expect("body")).expect("utf8"),
+            String::from_utf8(built.to_json_body().expect("body")).expect("utf8"),
+            "the struct-literal path must serialize what .unblocker({v}) serializes"
+        );
+        assert_eq!(format!("{:?}", literal), format!("{:?}", built));
+    }
+}
+
+#[test]
+fn struct_literal_has_one_slot_so_supplied_false_and_unset_coincide() {
+    // NOT a divergence, and deliberately not named like one: on the
+    // struct-literal path there is a single `asp` slot, so "supplied false" and
+    // "never supplied" are the same config and both resolve to off — exactly
+    // what Python, TypeScript and Go do for those rows. Rust answers the whole
+    // matrix the way the other SDKs do; the ONE cell where any SDK differs is
+    // Go's `ASP: false, Unblocker: BoolPtr(true)`, whose test row is named
+    // GO_LANGUAGE_FORCED_EXCEPTION_documented_divergence_not_a_bug. Nothing
+    // here belongs in that category.
+    //
+    // The builders do NOT collapse the two — they track suppliedness, which is
+    // why `.asp(false)` can veto `.unblocker(true)` — so no builder row is
+    // lost; the coincidence is confined to the struct-literal and
+    // post-build-field path, where there is one slot and nothing to disagree
+    // with.
+    let supplied_false = ScrapeConfig {
+        url: "https://example.com/literal".to_string(),
+        session_sticky_proxy: true,
+        asp: false,
+        ..Default::default()
+    };
+    let never_supplied = ScrapeConfig {
+        url: "https://example.com/literal".to_string(),
+        session_sticky_proxy: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        scrape_pairs_ordered(&supplied_false),
+        scrape_pairs_ordered(&never_supplied),
+        "on the literal path the two are the same config, and both leave the feature off"
+    );
+    assert!(!supplied_false.unblocker_enabled());
+
+    // The builder, by contrast, keeps them apart: a supplied false vetoes.
+    let vetoed = ScrapeConfig::builder("https://example.com/literal")
+        .asp(false)
+        .unblocker(true)
+        .build()
+        .expect("build");
+    let deferred = ScrapeConfig::builder("https://example.com/literal")
+        .unblocker(true)
+        .build()
+        .expect("build");
+    assert!(!vetoed.unblocker_enabled(), "supplied asp=false wins");
+    assert!(deferred.unblocker_enabled(), "unsupplied asp defers");
+}
+
+// --- 8. CLIENT LAYER -------------------------------------------------------
+//
+// Every assertion above stops at the config serializer. Nothing pinned that the
+// key survives the CLIENT: a param whitelist, a rename shim or a
+// re-serialization between `to_query_pairs` and `build_url` would leave the
+// whole matrix green while the wire lost the flag. These drive a real `Client`
+// against a one-shot local server and read the request line it actually sent.
+
+/// Runs one scrape against a local server and returns the raw request text.
+async fn captured_scrape_request(cfg: &ScrapeConfig) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let server = tokio::spawn(capture_one_request(
+        listener,
+        r#"{"result":{"status":"DONE","success":true,"status_code":200,"content":"","format":"text"}}"#,
+    ));
+
+    let client = Client::builder()
+        .api_key("scp-live-key")
+        .host(format!("http://127.0.0.1:{}", port))
+        .build()
+        .expect("client");
+
+    // The assertion is about the request the client SENT; how the stub envelope
+    // decodes is beside the point, so the result is deliberately not unwrapped.
+    let _ = client.scrape(cfg).await;
+
+    server.await.expect("server")
+}
+
+/// The query string of a captured `GET /scrape?...` request line.
+fn captured_query(raw: &str) -> String {
+    let line = raw.lines().next().expect("request line");
+    let target = line.split_whitespace().nth(1).expect("request target");
+    target
+        .split_once('?')
+        .map(|(_, q)| q.to_string())
+        .unwrap_or_default()
+}
+
+#[tokio::test]
+async fn client_sends_the_asp_wire_key_under_either_input_name() {
+    for input in [Input::Asp, Input::Unblocker] {
+        let raw = captured_scrape_request(&loaded_scrape(input, true)).await;
+        let query = captured_query(&raw);
+        assert!(
+            query.contains("asp=true"),
+            "{input:?}: `asp` missing from the sent request line: {query}"
+        );
+        assert!(
+            !query.contains("unblocker"),
+            "{input:?}: the new name reached the wire: {query}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn client_omits_the_key_when_the_feature_is_off() {
+    for input in [Input::Asp, Input::Unblocker] {
+        let query = captured_query(&captured_scrape_request(&loaded_scrape(input, false)).await);
+        assert!(
+            !query.contains("asp="),
+            "{input:?}: `asp` emitted while the feature is off: {query}"
+        );
+        assert!(!query.contains("unblocker"), "{input:?}: {query}");
+    }
+}
+
+#[tokio::test]
+async fn client_sends_an_identical_query_string_under_both_names() {
+    // The WHOLE query the client put on the wire, not just the one key.
+    let by_asp = captured_query(&captured_scrape_request(&loaded_scrape(Input::Asp, true)).await);
+    let by_unblocker =
+        captured_query(&captured_scrape_request(&loaded_scrape(Input::Unblocker, true)).await);
+
+    assert!(
+        by_asp.split('&').count() >= MIN_LOADED_PAIRS,
+        "the client sent only {} params; the comparison would be near-vacuous: {by_asp}",
+        by_asp.split('&').count()
+    );
+    assert_eq!(
+        by_asp, by_unblocker,
+        "the client must send an identical query string for the two names"
+    );
+    assert!(by_asp.contains("asp=true"));
+}
+
+// --- 9. ERROR SURFACE ------------------------------------------------------
+
+#[test]
+fn unblocker_named_predicate_matches_the_asp_bypass_variant() {
+    // A variant cannot be aliased in Rust, so the rename reaches the error
+    // surface as a predicate. Go exposes `ErrUnblockerBypassFailed` and the
+    // TypeScript / Python SDKs `ScrapflyUnblockerError` for the same failure; a
+    // customer who renamed the config parameter needs an unblocker-named way to
+    // test for it here too.
+    let asp_failure = scrapfly_sdk::error::from_response(
+        422,
+        br#"{"code":"ERR::ASP::SHIELD_PROTECTION_FAILED","message":"shield failed"}"#,
+        0,
+        false,
+    );
+    assert!(matches!(
+        asp_failure,
+        scrapfly_sdk::error::ScrapflyError::AspBypassFailed(_)
+    ));
+    assert!(
+        asp_failure.is_unblocker_failure(),
+        "is_unblocker_failure() must be true for exactly the AspBypassFailed variant"
+    );
+
+    // Negative control: a different failure must NOT answer true, so the
+    // predicate is evidence and not a constant.
+    let proxy_failure = scrapfly_sdk::error::from_response(
+        422,
+        br#"{"code":"ERR::PROXY::UNAVAILABLE","message":"no proxy"}"#,
+        0,
+        false,
+    );
+    assert!(!proxy_failure.is_unblocker_failure());
 }

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["BUILDING","DISABLED","FAILED","PARTIAL","READY"]};

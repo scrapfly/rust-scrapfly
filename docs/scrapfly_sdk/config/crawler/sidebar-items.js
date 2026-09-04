@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["CrawlerConfig","CrawlerConfigBuilder"]};
+window.SIDEBAR_ITEMS = {"constant":["REFRESH_MAX_INTERVAL","REFRESH_MIN_INTERVAL"],"struct":["CrawlerConfig","CrawlerConfigBuilder"]};

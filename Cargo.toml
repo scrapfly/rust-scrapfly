@@ -39,6 +39,10 @@ name = "concurrent_scrape"
 path = "examples/concurrent_scrape.rs"
 
 [[example]]
+name = "unblocker"
+path = "examples/unblocker.rs"
+
+[[example]]
 name = "screenshot"
 path = "examples/screenshot.rs"
 

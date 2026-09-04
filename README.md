@@ -41,6 +41,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-See `examples/` for screenshot, extraction, crawler lifecycle and concurrent scrape.
+## Unblocker
+
+The Unblocker is Scrapfly's anti-bot bypass. Turn it on per request:
+
+```rust
+let cfg = ScrapeConfig::builder("https://example.com")
+    .unblocker(true)
+    .build()?;
+```
+
+`CrawlerConfig::builder("https://example.com").unblocker(true)` does the same for
+a crawl.
+
+`asp` is the previous name for this feature. `ScrapeConfigBuilder::asp` and
+`CrawlerConfigBuilder::asp` are deprecated input aliases that keep working and
+are not going away — existing code needs no edit. When both names are supplied,
+`asp` wins in either call order, so an explicit `.asp(false)` still turns the
+feature off. The two names are never OR-ed.
+
+On the built structs there is a single field, `ScrapeConfig::asp` /
+`CrawlerConfig::asp`. It keeps the old name because that name is the wire key
+and renaming a public field would stop existing callers from compiling; there
+is deliberately no second `unblocker` field for it to disagree with. Read it
+with `unblocker_enabled()` and write it with `set_unblocker()`, so a config can
+still be flipped after `build()`:
+
+```rust
+let mut cfg = ScrapeConfig::builder("https://example.com")
+    .unblocker(true)
+    .build()?;
+cfg.set_unblocker(false); // same slot as `cfg.asp = false`; feature is off
+```
+
+The request itself continues to carry the parameter as `asp`. That is a
+server-compatibility detail of this release, not something to depend on.
+
+The failure variant keeps its name too: `ScrapflyError::AspBypassFailed` is
+dispatched from the literal `ERR::ASP::*` codes the API returns. Rust cannot
+alias an enum variant, so the current name reaches the error surface as a
+predicate — `err.is_unblocker_failure()` is exactly a match on that variant, and
+is the counterpart of Go's `ErrUnblockerBypassFailed` and the TypeScript and
+Python SDKs' `ScrapflyUnblockerError`.
+
+See `examples/unblocker.rs`, and `examples/` for screenshot, extraction, crawler
+lifecycle and concurrent scrape.
 
 MSRV: 1.75. See <https://scrapfly.io/docs> for the full API reference.
