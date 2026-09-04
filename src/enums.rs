@@ -379,6 +379,12 @@ pub enum CrawlerWebhookEvent {
     CrawlerCancelled,
     /// `crawler_finished`.
     CrawlerFinished,
+    /// `crawler_search_ready`.
+    CrawlerSearchReady,
+    /// `crawler_search_failed`.
+    CrawlerSearchFailed,
+    /// `crawler_updated`.
+    CrawlerUpdated,
 }
 
 impl CrawlerWebhookEvent {
@@ -393,6 +399,9 @@ impl CrawlerWebhookEvent {
             Self::CrawlerStopped => "crawler_stopped",
             Self::CrawlerCancelled => "crawler_cancelled",
             Self::CrawlerFinished => "crawler_finished",
+            Self::CrawlerSearchReady => "crawler_search_ready",
+            Self::CrawlerSearchFailed => "crawler_search_failed",
+            Self::CrawlerUpdated => "crawler_updated",
         }
     }
 }

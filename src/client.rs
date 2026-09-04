@@ -12,6 +12,7 @@ use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, CONTENT_TYPE, USER_AGENT};
 use reqwest::{Method, Response, Url};
 
 use crate::config::crawler::CrawlerConfig;
+use crate::config::crawler::{REFRESH_MAX_INTERVAL, REFRESH_MIN_INTERVAL};
 use crate::config::extraction::ExtractionConfig;
 use crate::config::scrape::ScrapeConfig;
 use crate::config::screenshot::ScreenshotConfig;
@@ -24,8 +25,9 @@ use crate::monitoring::{
 use crate::result::account::{AccountData, VerifyApiKeyResult};
 use crate::result::classify::{ClassifyRequest, ClassifyResult};
 use crate::result::crawler::{
-    CrawlerArtifact, CrawlerArtifactType, CrawlerContents, CrawlerStartResponse, CrawlerStatus,
-    CrawlerUrls,
+    CrawlerArtifact, CrawlerArtifactType, CrawlerContents, CrawlerPromptDone, CrawlerPromptEvent,
+    CrawlerPromptSource, CrawlerRefreshEntry, CrawlerRefreshState, CrawlerSearchResponse,
+    CrawlerStartResponse, CrawlerStatus, CrawlerUrls,
 };
 use crate::result::extraction::ExtractionResult;
 use crate::result::scrape::{ResultData, ScrapeResult};
@@ -37,6 +39,10 @@ const SDK_USER_AGENT: &str = "Scrapfly-Rust-SDK";
 const DEFAULT_RETRIES: usize = 3;
 const DEFAULT_RETRY_DELAY: Duration = Duration::from_secs(1);
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(150);
+/// Deadline for the `/crawl/prompt` SSE exchange. It has to clear the API's
+/// own 165s ceiling (retrieval plus up to 150s of generation), which
+/// [`DEFAULT_TIMEOUT`] does not.
+const CRAWL_PROMPT_STREAM_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// Request-inspection callback. Fires right before `send()`.
 ///
@@ -1211,6 +1217,262 @@ impl Client {
         )
     }
 
+    /// Search the indexes of one or more crawls and return one merged ranking.
+    ///
+    /// `POST /crawl/search`: the collection endpoint is the real API and
+    /// [`Client::crawl_search`] is sugar over a one-element list, so the two
+    /// cannot drift.
+    ///
+    /// Only crawls started with [`CrawlerConfig::search`] whose index reached
+    /// `READY` or `PARTIAL` contribute. The rest come back in
+    /// [`CrawlerSearchResponse::skipped`] with a reason and never fail the
+    /// call, so inspect that list before concluding a crawl had no match.
+    pub async fn crawls_search(
+        &self,
+        crawl_ids: &[String],
+        query: &str,
+        opts: Option<&CrawlSearchOptions>,
+    ) -> Result<CrawlerSearchResponse, ScrapflyError> {
+        validate_crawl_ids(crawl_ids)?;
+        if query.is_empty() {
+            return Err(ScrapflyError::Config("query cannot be empty".into()));
+        }
+
+        let mut body = serde_json::Map::new();
+        body.insert("query".into(), serde_json::Value::String(query.to_string()));
+        body.insert("crawl_ids".into(), serde_json::to_value(crawl_ids)?);
+        if let Some(o) = opts {
+            o.apply(&mut body)?;
+        }
+
+        let url = self.build_url("/crawl/search", &[])?;
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+        let payload = serde_json::to_vec(&serde_json::Value::Object(body))?;
+        let resp = self
+            .send_with_retry(Method::POST, url, Some(headers), Some(payload))
+            .await?;
+        let (status, _h, bytes) = read_response(resp).await?;
+        if status != 200 {
+            return Err(from_response(status, &bytes, 0, true));
+        }
+        Ok(serde_json::from_slice(&bytes)?)
+    }
+
+    /// Search a single crawl's index.
+    ///
+    /// `GET /crawl/{uuid}/search` is the documented convenience path; this SDK
+    /// reaches the same implementation through the collection endpoint so
+    /// single and multi-crawl search cannot answer differently.
+    pub async fn crawl_search(
+        &self,
+        uuid: &str,
+        query: &str,
+        opts: Option<&CrawlSearchOptions>,
+    ) -> Result<CrawlerSearchResponse, ScrapflyError> {
+        if uuid.is_empty() {
+            return Err(ScrapflyError::Config("uuid cannot be empty".into()));
+        }
+        let ids = [uuid.to_string()];
+        self.crawls_search(&ids, query, opts).await
+    }
+
+    /// Answer a question from the content of one or more crawls, streaming
+    /// the answer as it is generated.
+    ///
+    /// `POST /crawl/prompt`: the collection endpoint is the real API and
+    /// [`Client::crawl_prompt`] is sugar over a one-element list.
+    ///
+    /// The returned stream yields `Source` frames, then `Token` frames, then
+    /// one `Done`. A server-sent `error` frame surfaces as an `Err` item,
+    /// which can arrive after tokens were already yielded because generation
+    /// fails mid-stream.
+    ///
+    /// No retry: the request runs a fan-out and a generation, both billable,
+    /// so replaying it doubles the bill.
+    pub async fn crawls_prompt(
+        &self,
+        crawl_ids: &[String],
+        prompt: &str,
+        opts: Option<&CrawlPromptOptions>,
+    ) -> Result<impl Stream<Item = Result<CrawlerPromptEvent, ScrapflyError>>, ScrapflyError> {
+        validate_crawl_ids(crawl_ids)?;
+        if prompt.is_empty() {
+            return Err(ScrapflyError::Config("prompt cannot be empty".into()));
+        }
+
+        let mut generation = serde_json::Map::new();
+        generation.insert("stream".into(), serde_json::Value::Bool(true));
+        if let Some(model) = opts.and_then(|o| o.model.as_deref()) {
+            generation.insert("model".into(), serde_json::Value::String(model.to_string()));
+        }
+        let mut body = serde_json::Map::new();
+        body.insert(
+            "prompt".into(),
+            serde_json::Value::String(prompt.to_string()),
+        );
+        body.insert("crawl_ids".into(), serde_json::to_value(crawl_ids)?);
+        body.insert("generation".into(), serde_json::Value::Object(generation));
+        if let Some(search) = opts.and_then(|o| o.search.as_ref()) {
+            let mut map = serde_json::Map::new();
+            search.apply(&mut map)?;
+            if !map.is_empty() {
+                body.insert("search".into(), serde_json::Value::Object(map));
+            }
+        }
+
+        let url = self.build_url("/crawl/prompt", &[])?;
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        headers.insert(ACCEPT, HeaderValue::from_static("text/event-stream"));
+        let payload = serde_json::to_vec(&serde_json::Value::Object(body))?;
+        let resp = self.send_prompt_stream(url, headers, payload).await?;
+
+        let status = resp.status().as_u16();
+        if status != 200 {
+            let bytes = resp.bytes().await?;
+            return Err(from_response(status, &bytes, 0, true));
+        }
+
+        Ok(crawler_prompt_stream(resp))
+    }
+
+    /// Answer a question from a single crawl's content.
+    pub async fn crawl_prompt(
+        &self,
+        uuid: &str,
+        prompt: &str,
+        opts: Option<&CrawlPromptOptions>,
+    ) -> Result<impl Stream<Item = Result<CrawlerPromptEvent, ScrapflyError>>, ScrapflyError> {
+        if uuid.is_empty() {
+            return Err(ScrapflyError::Config("uuid cannot be empty".into()));
+        }
+        let ids = [uuid.to_string()];
+        self.crawls_prompt(&ids, prompt, opts).await
+    }
+
+    /// Run one refresh of an existing crawl immediately, without waiting for
+    /// the next scheduled period.
+    ///
+    /// `POST /crawl/{uuid}/refresh` re-scrapes the crawl's own URLs in place:
+    /// same crawler UUID, same artifacts, same search index. Only pages whose
+    /// content actually changed are re-indexed and pages that disappeared are
+    /// dropped, so everything already pointing at this crawl keeps working.
+    ///
+    /// A refresh bills the pages it re-scrapes, exactly like the original
+    /// crawl. What unchanged pages save is the embedding and the index write.
+    ///
+    /// No retry: replaying the request starts a second re-scrape of the whole
+    /// site, and that is billable.
+    pub async fn crawl_refresh_now(
+        &self,
+        uuid: &str,
+    ) -> Result<CrawlerRefreshState, ScrapflyError> {
+        if uuid.is_empty() {
+            return Err(ScrapflyError::Config("uuid cannot be empty".into()));
+        }
+        let url = self.build_url(&format!("/crawl/{}/refresh", uuid), &[])?;
+        let mut headers = HeaderMap::new();
+        headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+        let resp = self
+            .send_once(Method::POST, url, Some(headers), None)
+            .await?;
+        let (status, _h, bytes) = read_response(resp).await?;
+        if status != 200 && status != 202 {
+            return Err(from_response(status, &bytes, 0, true));
+        }
+        Ok(CrawlerRefreshState::from_envelope(&bytes)?)
+    }
+
+    /// Change the refresh schedule of an existing crawl.
+    ///
+    /// `PATCH /crawl/{uuid}/refresh` — only the fields set on `settings` are
+    /// changed, so turning a crawl off keeps its interval for when it is
+    /// turned back on.
+    ///
+    /// Turning refresh on for a crawl started without it is allowed: the crawl
+    /// already holds the URL index a refresh walks.
+    pub async fn crawl_refresh_settings(
+        &self,
+        uuid: &str,
+        settings: &CrawlRefreshSettings,
+    ) -> Result<CrawlerRefreshState, ScrapflyError> {
+        if uuid.is_empty() {
+            return Err(ScrapflyError::Config("uuid cannot be empty".into()));
+        }
+        if settings.enabled.is_none() && settings.interval_seconds.is_none() {
+            return Err(ScrapflyError::Config(
+                "set at least one of enabled, interval_seconds".into(),
+            ));
+        }
+        if let Some(interval) = settings.interval_seconds {
+            if !(REFRESH_MIN_INTERVAL..=REFRESH_MAX_INTERVAL).contains(&interval) {
+                return Err(ScrapflyError::Config(format!(
+                    "interval_seconds must be between {} and {} seconds, got {}",
+                    REFRESH_MIN_INTERVAL, REFRESH_MAX_INTERVAL, interval
+                )));
+            }
+        }
+
+        // Wire keys are the ones POST /crawl already takes, so a crawl body and
+        // a later PATCH name the same things. The enabled/interval_seconds
+        // spelling belongs to the state block this call answers with, not to
+        // its request; the API decodes the body with unknown fields rejected.
+        let mut body = serde_json::Map::new();
+        if let Some(enabled) = settings.enabled {
+            body.insert("refresh".into(), serde_json::Value::Bool(enabled));
+        }
+        if let Some(interval) = settings.interval_seconds {
+            body.insert("refresh_interval".into(), serde_json::json!(interval));
+        }
+
+        let url = self.build_url(&format!("/crawl/{}/refresh", uuid), &[])?;
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+        let payload = serde_json::to_vec(&serde_json::Value::Object(body))?;
+        let resp = self
+            .send_with_retry(Method::PATCH, url, Some(headers), Some(payload))
+            .await?;
+        let (status, _h, bytes) = read_response(resp).await?;
+        if status != 200 {
+            return Err(from_response(status, &bytes, 0, true));
+        }
+        Ok(CrawlerRefreshState::from_envelope(&bytes)?)
+    }
+
+    /// Read a crawl's refresh timeline, newest last.
+    ///
+    /// `GET /crawl/{uuid}/refresh/history` — the server keeps the 50 most
+    /// recent runs; older rows are trimmed rather than paged, because the
+    /// timeline exists to show recent activity. `limit` of `None` returns
+    /// everything the server kept.
+    pub async fn crawl_refresh_history(
+        &self,
+        uuid: &str,
+        limit: Option<u32>,
+    ) -> Result<Vec<CrawlerRefreshEntry>, ScrapflyError> {
+        if uuid.is_empty() {
+            return Err(ScrapflyError::Config("uuid cannot be empty".into()));
+        }
+        let mut pairs: Vec<(String, String)> = Vec::new();
+        if let Some(limit) = limit {
+            pairs.push(("limit".into(), limit.to_string()));
+        }
+        let url = self.build_url(&format!("/crawl/{}/refresh/history", uuid), &pairs)?;
+        let mut headers = HeaderMap::new();
+        headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+        let resp = self
+            .send_with_retry(Method::GET, url, Some(headers), None)
+            .await?;
+        let (status, _h, bytes) = read_response(resp).await?;
+        if status != 200 {
+            return Err(from_response(status, &bytes, 0, true));
+        }
+        Ok(CrawlerRefreshState::from_envelope(&bytes)?.history)
+    }
+
     /// Cancel a crawler job.
     pub async fn crawl_cancel(&self, uuid: &str) -> Result<(), ScrapflyError> {
         if uuid.is_empty() {
@@ -1317,7 +1579,58 @@ impl Client {
         Err(last_err.unwrap_or_else(|| ScrapflyError::Config("retry loop exhausted".into())))
     }
 
+    /// Fire a request exactly once, no retry. For calls whose replay is not
+    /// free: a refresh re-scrapes the whole site and is billable.
+    pub(crate) async fn send_once(
+        &self,
+        method: Method,
+        url: Url,
+        headers: Option<HeaderMap>,
+        body: Option<Vec<u8>>,
+    ) -> Result<Response, ScrapflyError> {
+        let mut hmap = headers.unwrap_or_default();
+        if !hmap.contains_key(USER_AGENT) {
+            hmap.insert(USER_AGENT, HeaderValue::from_static(SDK_USER_AGENT));
+        }
+        if let Some(cb) = &self.on_request {
+            cb(&method, &url, &hmap);
+        }
+        let mut req = self.http.request(method, url).headers(hmap);
+        if let Some(b) = body {
+            req = req.body(b);
+        }
+        req.send().await.map_err(ScrapflyError::Transport)
+    }
+
     /// Single-shot send, no retry (for `verify_api_key`/`account` style calls).
+    /// Send the prompt request with a deadline that outlives the server's own
+    /// budget. `reqwest`'s client timeout covers the response body, so the
+    /// 150s default would cut a legitimate SSE stream mid-answer: the API
+    /// allows retrieval plus up to 150s of generation under a 165s ceiling.
+    /// The per-request override leaves every other call's deadline alone.
+    async fn send_prompt_stream(
+        &self,
+        url: Url,
+        headers: HeaderMap,
+        body: Vec<u8>,
+    ) -> Result<Response, ScrapflyError> {
+        let mut hmap = headers;
+        if !hmap.contains_key(USER_AGENT) {
+            hmap.insert(USER_AGENT, HeaderValue::from_static(SDK_USER_AGENT));
+        }
+        if let Some(cb) = &self.on_request {
+            cb(&Method::POST, &url, &hmap);
+        }
+        self.http
+            .request(Method::POST, url)
+            .headers(hmap)
+            .body(body)
+            .timeout(CRAWL_PROMPT_STREAM_TIMEOUT)
+            .send()
+            .await
+            .map_err(ScrapflyError::Transport)
+    }
+
     async fn send_simple(
         &self,
         method: Method,
@@ -1419,6 +1732,267 @@ fn parse_multipart_related(
             .insert(part_format, part_body.to_string());
     }
     Ok(result)
+}
+
+/// Which retrieval legs a crawl search runs.
+///
+/// `Hybrid` runs both and merges them with reciprocal rank fusion; it is the
+/// server default when the mode is left unset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CrawlerSearchMode {
+    /// Semantic (embedding) leg only.
+    Vector,
+    /// Keyword (full-text) leg only.
+    Fts,
+    /// Both legs, merged with reciprocal rank fusion.
+    Hybrid,
+}
+
+impl CrawlerSearchMode {
+    /// Wire-format string.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Vector => "vector",
+            Self::Fts => "fts",
+            Self::Hybrid => "hybrid",
+        }
+    }
+}
+
+/// Fields to change on a crawl's refresh schedule, for
+/// [`Client::crawl_refresh_settings`].
+///
+/// Every field is optional so that "leave alone" stays distinguishable from
+/// "set to false" / "set to zero": turning a crawl off must keep its interval
+/// for when it is turned back on.
+#[derive(Debug, Clone, Default)]
+pub struct CrawlRefreshSettings {
+    /// Turn auto-refresh on or off.
+    pub enabled: Option<bool>,
+    /// Period between runs, in seconds.
+    pub interval_seconds: Option<u32>,
+}
+
+/// Options for [`Client::crawls_search`]. The default sends nothing and lets
+/// the server apply its own defaults for every field.
+#[derive(Debug, Clone, Default)]
+pub struct CrawlSearchOptions {
+    /// Result cap, 1-50 (server cap). `None` = server default.
+    pub limit: Option<u32>,
+    /// Retrieval legs. `None` = server default (hybrid).
+    pub mode: Option<CrawlerSearchMode>,
+    /// Flat filter map: `url_prefix`, `host`, `source_format`,
+    /// `content_type`, `http_status`, `crawler_uuid`. Filters are pushed down
+    /// per crawl before its top-K, so they never cost recall. Unknown keys
+    /// are rejected server-side rather than ignored.
+    pub filters: Option<serde_json::Value>,
+    /// Next-page token from a previous response. `None` starts page 1.
+    pub cursor: Option<String>,
+}
+
+impl CrawlSearchOptions {
+    fn apply(
+        &self,
+        body: &mut serde_json::Map<String, serde_json::Value>,
+    ) -> Result<(), ScrapflyError> {
+        if let Some(limit) = self.limit {
+            body.insert("limit".into(), serde_json::Value::from(limit));
+        }
+        if let Some(mode) = self.mode {
+            body.insert(
+                "mode".into(),
+                serde_json::Value::String(mode.as_str().to_string()),
+            );
+        }
+        if let Some(filters) = &self.filters {
+            if !filters.is_object() {
+                return Err(ScrapflyError::Config(
+                    "search filters must be a JSON object".into(),
+                ));
+            }
+            body.insert("filters".into(), filters.clone());
+        }
+        if let Some(cursor) = &self.cursor {
+            body.insert("cursor".into(), serde_json::Value::String(cursor.clone()));
+        }
+        Ok(())
+    }
+}
+
+/// Options for [`Client::crawls_prompt`].
+#[derive(Debug, Clone, Default)]
+pub struct CrawlPromptOptions {
+    /// Retrieval overrides. `None` uses the server's defaults.
+    pub search: Option<CrawlSearchOptions>,
+    /// Generation model id. `None` uses the server default.
+    pub model: Option<String>,
+}
+
+/// Enforce the shape both collection endpoints share: a non-empty list with
+/// no duplicates. Duplicates are rejected by the API, and catching them here
+/// saves a round trip that can only fail.
+fn validate_crawl_ids(crawl_ids: &[String]) -> Result<(), ScrapflyError> {
+    if crawl_ids.is_empty() {
+        return Err(ScrapflyError::Config(
+            "crawl_ids must contain at least one crawler UUID".into(),
+        ));
+    }
+    let mut seen = std::collections::HashSet::with_capacity(crawl_ids.len());
+    for id in crawl_ids {
+        if id.is_empty() {
+            return Err(ScrapflyError::Config(
+                "crawl_ids contains an empty crawler UUID".into(),
+            ));
+        }
+        if !seen.insert(id.as_str()) {
+            return Err(ScrapflyError::Config(format!(
+                "crawl_ids contains duplicate crawler UUID {id}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Buffered SSE decoder state for the `/crawl/prompt` body.
+struct PromptStreamState {
+    body: std::pin::Pin<Box<dyn Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send>>,
+    /// Undecoded tail: a UTF-8 character or an SSE line can straddle chunks.
+    buffer: Vec<u8>,
+    event: String,
+    data: Vec<String>,
+    pending: std::collections::VecDeque<Result<CrawlerPromptEvent, ScrapflyError>>,
+    finished: bool,
+}
+
+/// Decode the `POST /crawl/prompt` SSE body into typed frames.
+///
+/// Only `event:` and `data:` lines matter; `:keepalive` comment frames exist
+/// to keep intermediaries from closing an idle connection and carry nothing.
+/// Token payloads are JSON strings; every other frame is a JSON object.
+fn crawler_prompt_stream(
+    resp: Response,
+) -> impl Stream<Item = Result<CrawlerPromptEvent, ScrapflyError>> {
+    let state = PromptStreamState {
+        body: Box::pin(resp.bytes_stream()),
+        buffer: Vec::new(),
+        event: String::new(),
+        data: Vec::new(),
+        pending: std::collections::VecDeque::new(),
+        finished: false,
+    };
+
+    futures_util::stream::unfold(state, |mut st| async move {
+        loop {
+            if let Some(item) = st.pending.pop_front() {
+                return Some((item, st));
+            }
+            if st.finished {
+                return None;
+            }
+            match st.body.next().await {
+                Some(Ok(chunk)) => {
+                    st.buffer.extend_from_slice(&chunk);
+                    drain_prompt_frames(&mut st, false);
+                }
+                Some(Err(e)) => {
+                    st.finished = true;
+                    st.pending.push_back(Err(ScrapflyError::Transport(e)));
+                }
+                None => {
+                    st.finished = true;
+                    drain_prompt_frames(&mut st, true);
+                }
+            }
+        }
+    })
+}
+
+/// Pull every complete line out of the buffer and push decoded frames onto
+/// `pending`. With `eof` the trailing partial line is flushed too, which
+/// covers a server that omits the final blank line.
+fn drain_prompt_frames(st: &mut PromptStreamState, eof: bool) {
+    while let Some(idx) = st.buffer.iter().position(|b| *b == b'\n') {
+        let raw: Vec<u8> = st.buffer.drain(..=idx).collect();
+        let line = String::from_utf8_lossy(&raw[..raw.len() - 1])
+            .trim_end_matches('\r')
+            .to_string();
+        handle_prompt_line(st, &line);
+    }
+    if eof {
+        if !st.buffer.is_empty() {
+            let raw = std::mem::take(&mut st.buffer);
+            let line = String::from_utf8_lossy(&raw)
+                .trim_end_matches('\r')
+                .to_string();
+            handle_prompt_line(st, &line);
+        }
+        // A stream that ended without its terminating blank line still has a
+        // complete frame buffered; emitting it beats losing the answer.
+        flush_prompt_frame(st);
+    }
+}
+
+fn handle_prompt_line(st: &mut PromptStreamState, line: &str) {
+    if line.starts_with(':') {
+        return;
+    }
+    // A blank line terminates a frame.
+    if line.is_empty() {
+        flush_prompt_frame(st);
+        return;
+    }
+    if let Some(rest) = line.strip_prefix("event:") {
+        st.event = rest.trim().to_string();
+    } else if let Some(rest) = line.strip_prefix("data:") {
+        st.data
+            .push(rest.strip_prefix(' ').unwrap_or(rest).to_string());
+    }
+}
+
+fn flush_prompt_frame(st: &mut PromptStreamState) {
+    if st.event.is_empty() || st.data.is_empty() {
+        st.event.clear();
+        st.data.clear();
+        return;
+    }
+    let raw = st.data.join("\n");
+    let event = std::mem::take(&mut st.event);
+    st.data.clear();
+
+    let decoded = match event.as_str() {
+        "token" => {
+            // A server sending bare text instead of a JSON string is still
+            // sending a token; do not drop the answer over the quoting.
+            let token = serde_json::from_str::<String>(&raw).unwrap_or_else(|_| raw.clone());
+            Ok(CrawlerPromptEvent::Token(token))
+        }
+        "source" => serde_json::from_str::<CrawlerPromptSource>(&raw)
+            .map(CrawlerPromptEvent::Source)
+            .map_err(ScrapflyError::Json),
+        "done" => serde_json::from_str::<CrawlerPromptDone>(&raw)
+            .map(CrawlerPromptEvent::Done)
+            .map_err(ScrapflyError::Json),
+        "error" => {
+            let payload: serde_json::Value =
+                serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null);
+            Err(ScrapflyError::Api(ApiError {
+                code: payload
+                    .get("code")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("ERR::CRAWLER::UNKNOWN")
+                    .to_string(),
+                message: payload
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(raw.as_str())
+                    .to_string(),
+                http_status: 200,
+                ..Default::default()
+            }))
+        }
+        _ => return,
+    };
+    st.pending.push_back(decoded);
 }
 
 fn infer_format_from_content_type(ct: &str) -> String {

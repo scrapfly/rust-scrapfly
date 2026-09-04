@@ -2,12 +2,15 @@
 
 use std::time::{Duration, Instant};
 
-use crate::client::Client;
+use futures_util::stream::Stream;
+
+use crate::client::{Client, CrawlPromptOptions, CrawlRefreshSettings, CrawlSearchOptions};
 use crate::config::crawler::CrawlerConfig;
 use crate::enums::CrawlerContentFormat;
 use crate::error::ScrapflyError;
 use crate::result::crawler::{
-    CrawlContent, CrawlerArtifact, CrawlerArtifactType, CrawlerContents, CrawlerStatus, CrawlerUrls,
+    CrawlContent, CrawlerArtifact, CrawlerArtifactType, CrawlerContents, CrawlerPromptEvent,
+    CrawlerRefreshEntry, CrawlerRefreshState, CrawlerSearchResponse, CrawlerStatus, CrawlerUrls,
 };
 
 /// Polling options for [`Crawl::wait`].
@@ -148,6 +151,67 @@ impl<'a> Crawl<'a> {
         self.client
             .crawl_urls(uuid, status_filter, page, per_page)
             .await
+    }
+
+    /// Search this crawl's index. Thin wrapper around
+    /// [`Client::crawl_search`], which itself goes through the collection
+    /// endpoint.
+    ///
+    /// Requires the crawl to have been started with `CrawlerConfig::search`
+    /// and its index to have reached `READY`/`PARTIAL`; poll
+    /// [`CrawlerStatus::search`] or subscribe to the `crawler_search_ready`
+    /// webhook. An index that is not ready yet is reported in the response's
+    /// `skipped` list, not as an error.
+    pub async fn search(
+        &self,
+        query: &str,
+        opts: Option<&CrawlSearchOptions>,
+    ) -> Result<CrawlerSearchResponse, ScrapflyError> {
+        let uuid = self.uuid_required()?;
+        self.client.crawl_search(uuid, query, opts).await
+    }
+
+    /// Answer a question from this crawl's content, streaming the answer.
+    /// Thin wrapper around [`Client::crawl_prompt`].
+    pub async fn prompt(
+        &self,
+        prompt: &str,
+        opts: Option<&CrawlPromptOptions>,
+    ) -> Result<impl Stream<Item = Result<CrawlerPromptEvent, ScrapflyError>>, ScrapflyError> {
+        let uuid = self.uuid_required()?;
+        self.client.crawl_prompt(uuid, prompt, opts).await
+    }
+
+    /// Re-scrape this crawl's URLs in place, right now. Thin wrapper around
+    /// [`Client::crawl_refresh_now`].
+    ///
+    /// The crawl keeps its uuid, its artifacts and its search index; only
+    /// pages whose content changed are re-indexed and pages that disappeared
+    /// are dropped.
+    pub async fn refresh_now(&self) -> Result<CrawlerRefreshState, ScrapflyError> {
+        let uuid = self.uuid_required()?;
+        self.client.crawl_refresh_now(uuid).await
+    }
+
+    /// Change this crawl's refresh schedule. Thin wrapper around
+    /// [`Client::crawl_refresh_settings`]; only the fields set on `settings`
+    /// change.
+    pub async fn refresh_settings(
+        &self,
+        settings: &CrawlRefreshSettings,
+    ) -> Result<CrawlerRefreshState, ScrapflyError> {
+        let uuid = self.uuid_required()?;
+        self.client.crawl_refresh_settings(uuid, settings).await
+    }
+
+    /// Read this crawl's refresh timeline, newest last. Thin wrapper around
+    /// [`Client::crawl_refresh_history`].
+    pub async fn refresh_history(
+        &self,
+        limit: Option<u32>,
+    ) -> Result<Vec<CrawlerRefreshEntry>, ScrapflyError> {
+        let uuid = self.uuid_required()?;
+        self.client.crawl_refresh_history(uuid, limit).await
     }
 
     /// Read a single URL's content and wrap it in a [`CrawlContent`]. Returns

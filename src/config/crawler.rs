@@ -7,6 +7,14 @@ use serde::Serialize;
 use crate::enums::{CrawlerContentFormat, CrawlerWebhookEvent};
 use crate::error::ScrapflyError;
 
+/// Auto-refresh interval floor, in seconds (1 hour).
+///
+/// The floor decides the cost: a crawl refreshing every minute re-scrapes the
+/// whole site 1,440 times a day.
+pub const REFRESH_MIN_INTERVAL: u32 = 3600;
+/// Auto-refresh interval ceiling, in seconds (90 days).
+pub const REFRESH_MAX_INTERVAL: u32 = 90 * 24 * 3600;
+
 /// Configuration for a `POST /crawl` request.
 ///
 /// Exactly one URL source must be provided: `url` (seed crawl with
@@ -110,6 +118,23 @@ pub struct CrawlerConfig {
     /// Inline extraction rules.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extraction_rules: Option<serde_json::Value>,
+
+    /// Build a search index while the crawl runs. Query it with
+    /// [`crate::Client::crawl_search`] / [`crate::Client::crawl_prompt`] once ready.
+    #[serde(skip_serializing_if = "is_false")]
+    pub search: bool,
+
+    /// Keep this crawl fresh: re-scrape its own URLs in place on a period,
+    /// under the same crawler UUID and the same artifacts. Only pages whose
+    /// content changed are re-indexed and pages that disappeared are dropped.
+    #[serde(skip_serializing_if = "is_false")]
+    pub refresh: bool,
+
+    /// Period between refresh runs, in seconds
+    /// ([`REFRESH_MIN_INTERVAL`]..=[`REFRESH_MAX_INTERVAL`]). `None` leaves
+    /// the server default period.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_interval: Option<u32>,
 
     /// Enable ASP bypass.
     #[serde(skip_serializing_if = "is_false")]
@@ -246,6 +271,20 @@ impl CrawlerConfig {
                 "allowed_internal_subdomains is limited to 250 entries, got {}",
                 self.allowed_internal_subdomains.len()
             )));
+        }
+        if let Some(interval) = self.refresh_interval {
+            if !(REFRESH_MIN_INTERVAL..=REFRESH_MAX_INTERVAL).contains(&interval) {
+                return Err(ScrapflyError::Config(format!(
+                    "refresh_interval must be between {} and {} seconds, got {}",
+                    REFRESH_MIN_INTERVAL, REFRESH_MAX_INTERVAL, interval
+                )));
+            }
+            // A period with the feature off would silently never run.
+            if !self.refresh {
+                return Err(ScrapflyError::Config(
+                    "refresh_interval requires refresh = true".into(),
+                ));
+            }
         }
         Ok(())
     }
@@ -440,6 +479,21 @@ impl CrawlerConfigBuilder {
     /// Set extraction rules.
     pub fn extraction_rules(mut self, v: serde_json::Value) -> Self {
         self.cfg.extraction_rules = Some(v);
+        self
+    }
+    /// Build a search index while the crawl runs.
+    pub fn search(mut self, v: bool) -> Self {
+        self.cfg.search = v;
+        self
+    }
+    /// Keep this crawl fresh by re-scraping its own URLs in place.
+    pub fn refresh(mut self, v: bool) -> Self {
+        self.cfg.refresh = v;
+        self
+    }
+    /// Period between refresh runs, in seconds.
+    pub fn refresh_interval(mut self, v: u32) -> Self {
+        self.cfg.refresh_interval = Some(v);
         self
     }
     /// Enable ASP.

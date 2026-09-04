@@ -29,7 +29,10 @@ pub mod monitoring;
 pub mod result;
 pub mod schedule;
 
-pub use client::{Client, ClientBuilder, OnRequest};
+pub use client::{
+    Client, ClientBuilder, CrawlPromptOptions, CrawlRefreshSettings, CrawlSearchOptions,
+    CrawlerSearchMode, OnRequest,
+};
 pub use cloud_browser::{project_salt, BrowserConfig, UnblockConfig, UnblockResult};
 pub use config::crawler::CrawlerConfig;
 pub use config::extraction::ExtractionConfig;
@@ -44,8 +47,14 @@ pub use monitoring::{
 };
 pub use result::account::{AccountData, VerifyApiKeyResult};
 pub use result::crawler::{
-    CrawlContent, CrawlerArtifact, CrawlerArtifactType, CrawlerContents, CrawlerStartResponse,
-    CrawlerStatus, CrawlerUrlEntry, CrawlerUrls,
+    CrawlContent, CrawlerArtifact, CrawlerArtifactType, CrawlerContents, CrawlerLifecyclePayload,
+    CrawlerPromptDone, CrawlerPromptEvent, CrawlerPromptSource, CrawlerRefreshEntry, CrawlerRefreshState, CrawlerSearchCrawl, CrawlerSearchPayload,
+    CrawlerSearchResponse, CrawlerSearchResult, CrawlerSearchScores, CrawlerSearchSkipped,
+    CrawlerSearchState, CrawlerSearchStats, CrawlerStartResponse, CrawlerStatus,
+    CrawlerUpdatedDocuments, CrawlerUpdatedPayload, CrawlerUrlDiscoveredPayload, CrawlerUrlEntry,
+    CrawlerUrlFailedPayload, CrawlerUrlSkippedPayload, CrawlerUrlVisitedPayload, CrawlerUrls,
+    CrawlerWebhook, CrawlerWebhookCommon, CrawlerWebhookLogLink, CrawlerWebhookScrape,
+    CrawlerWebhookStatusLink,
 };
 pub use result::extraction::ExtractionResult;
 pub use result::scrape::ScrapeResult;
