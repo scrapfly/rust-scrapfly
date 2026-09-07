@@ -980,6 +980,49 @@ async fn crawl_prompt_done_frame_carries_thinking_tokens_and_dropped_sources() {
     );
 }
 
+#[tokio::test]
+async fn crawl_prompt_requires_done_frame() {
+    use futures_util::StreamExt;
+
+    for body in [
+        "",
+        ":keepalive\n\n",
+        "event: token\ndata: \"partial\"\n\n",
+        "event: token\ndata: \"partial\"\n\nevent: done\ndata: {}\n",
+    ] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(capture_one_request_as(listener, "text/event-stream", body));
+        let client = Client::builder()
+            .api_key("review-placeholder")
+            .host(format!("http://{address}"))
+            .build()
+            .unwrap();
+        let stream = client.crawl_prompt("abc", "question", None).await.unwrap();
+        let mut stream = Box::pin(stream);
+        let mut answer = String::new();
+        let mut failure = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(CrawlerPromptEvent::Token(token)) => answer.push_str(&token),
+                Err(err) => failure = Some(err),
+                _ => {}
+            }
+        }
+        server.await.unwrap();
+        let error = failure.unwrap_or_else(|| panic!("accepted incomplete stream: {body:?}"));
+        assert!(error.to_string().contains("done"), "{error}");
+        assert_eq!(
+            answer,
+            if body.contains("partial") {
+                "partial"
+            } else {
+                ""
+            }
+        );
+    }
+}
+
 #[test]
 fn crawler_search_response_tolerates_null_lists() {
     // The API renders CrawlSearchResponse from Go slices declared without

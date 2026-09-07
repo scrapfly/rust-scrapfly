@@ -1892,7 +1892,7 @@ fn crawler_prompt_stream(
             match st.body.next().await {
                 Some(Ok(chunk)) => {
                     st.buffer.extend_from_slice(&chunk);
-                    drain_prompt_frames(&mut st, false);
+                    drain_prompt_frames(&mut st);
                 }
                 Some(Err(e)) => {
                     st.finished = true;
@@ -1900,7 +1900,12 @@ fn crawler_prompt_stream(
                 }
                 None => {
                     st.finished = true;
-                    drain_prompt_frames(&mut st, true);
+                    st.pending.push_back(Err(ScrapflyError::Api(ApiError {
+                        code: "ERR::CRAWLER::PROMPT_GENERATION_FAILED".into(),
+                        message: "prompt stream ended before the done frame".into(),
+                        http_status: 200,
+                        ..Default::default()
+                    })));
                 }
             }
         }
@@ -1908,27 +1913,18 @@ fn crawler_prompt_stream(
 }
 
 /// Pull every complete line out of the buffer and push decoded frames onto
-/// `pending`. With `eof` the trailing partial line is flushed too, which
-/// covers a server that omits the final blank line.
-fn drain_prompt_frames(st: &mut PromptStreamState, eof: bool) {
+/// `pending`. Only a blank line completes a frame; an unfinished tail at EOF
+/// cannot turn an interrupted response into a successful result.
+fn drain_prompt_frames(st: &mut PromptStreamState) {
     while let Some(idx) = st.buffer.iter().position(|b| *b == b'\n') {
         let raw: Vec<u8> = st.buffer.drain(..=idx).collect();
         let line = String::from_utf8_lossy(&raw[..raw.len() - 1])
             .trim_end_matches('\r')
             .to_string();
         handle_prompt_line(st, &line);
-    }
-    if eof {
-        if !st.buffer.is_empty() {
-            let raw = std::mem::take(&mut st.buffer);
-            let line = String::from_utf8_lossy(&raw)
-                .trim_end_matches('\r')
-                .to_string();
-            handle_prompt_line(st, &line);
+        if st.finished {
+            break;
         }
-        // A stream that ended without its terminating blank line still has a
-        // complete frame buffered; emitting it beats losing the answer.
-        flush_prompt_frame(st);
     }
 }
 
@@ -1992,6 +1988,9 @@ fn flush_prompt_frame(st: &mut PromptStreamState) {
         }
         _ => return,
     };
+    if matches!(&decoded, Ok(CrawlerPromptEvent::Done(_)) | Err(_)) {
+        st.finished = true;
+    }
     st.pending.push_back(decoded);
 }
 
