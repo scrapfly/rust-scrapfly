@@ -560,6 +560,9 @@ pub struct CrawlerPromptDone {
     /// whether to use it is the caller's call.
     #[serde(default)]
     pub truncated: bool,
+    /// Actual charge, including zero. None when the server does not report it.
+    #[serde(default)]
+    pub api_credit: Option<u32>,
 }
 
 /// One decoded frame of the `POST /crawl/prompt` stream.

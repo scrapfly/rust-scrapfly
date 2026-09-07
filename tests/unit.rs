@@ -915,7 +915,7 @@ const PROMPT_STREAM_BODY: &str = concat!(
 );
 
 #[tokio::test]
-async fn crawl_prompt_done_frame_carries_thinking_tokens_and_dropped_sources() {
+async fn crawl_prompt_done_frame_keeps_public_fields_and_drops_provider_details() {
     use futures_util::StreamExt;
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -1020,6 +1020,19 @@ async fn crawl_prompt_requires_done_frame() {
                 ""
             }
         );
+    }
+}
+
+#[test]
+fn crawler_prompt_done_preserves_reported_charge() {
+    for (json, expected) in [
+        (r#"{"api_credit": 3}"#, Some(3)),
+        (r#"{"api_credit": 0}"#, Some(0)),
+        (r#"{"api_credit": null}"#, None),
+        (r#"{}"#, None),
+    ] {
+        let done: CrawlerPromptDone = serde_json::from_str(json).unwrap();
+        assert_eq!(done.api_credit, expected);
     }
 }
 
