@@ -1892,7 +1892,7 @@
 <a href=#1892 id=1892 data-nosnippet>1892</a>            <span class="kw">match </span>st.body.next().<span class="kw">await </span>{
 <a href=#1893 id=1893 data-nosnippet>1893</a>                <span class="prelude-val">Some</span>(<span class="prelude-val">Ok</span>(chunk)) =&gt; {
 <a href=#1894 id=1894 data-nosnippet>1894</a>                    st.buffer.extend_from_slice(<span class="kw-2">&amp;</span>chunk);
-<a href=#1895 id=1895 data-nosnippet>1895</a>                    drain_prompt_frames(<span class="kw-2">&amp;mut </span>st, <span class="bool-val">false</span>);
+<a href=#1895 id=1895 data-nosnippet>1895</a>                    drain_prompt_frames(<span class="kw-2">&amp;mut </span>st);
 <a href=#1896 id=1896 data-nosnippet>1896</a>                }
 <a href=#1897 id=1897 data-nosnippet>1897</a>                <span class="prelude-val">Some</span>(<span class="prelude-val">Err</span>(e)) =&gt; {
 <a href=#1898 id=1898 data-nosnippet>1898</a>                    st.finished = <span class="bool-val">true</span>;
@@ -1900,114 +1900,113 @@
 <a href=#1900 id=1900 data-nosnippet>1900</a>                }
 <a href=#1901 id=1901 data-nosnippet>1901</a>                <span class="prelude-val">None </span>=&gt; {
 <a href=#1902 id=1902 data-nosnippet>1902</a>                    st.finished = <span class="bool-val">true</span>;
-<a href=#1903 id=1903 data-nosnippet>1903</a>                    drain_prompt_frames(<span class="kw-2">&amp;mut </span>st, <span class="bool-val">true</span>);
-<a href=#1904 id=1904 data-nosnippet>1904</a>                }
-<a href=#1905 id=1905 data-nosnippet>1905</a>            }
-<a href=#1906 id=1906 data-nosnippet>1906</a>        }
-<a href=#1907 id=1907 data-nosnippet>1907</a>    })
-<a href=#1908 id=1908 data-nosnippet>1908</a>}
-<a href=#1909 id=1909 data-nosnippet>1909</a>
-<a href=#1910 id=1910 data-nosnippet>1910</a><span class="doccomment">/// Pull every complete line out of the buffer and push decoded frames onto
-<a href=#1911 id=1911 data-nosnippet>1911</a>/// `pending`. With `eof` the trailing partial line is flushed too, which
-<a href=#1912 id=1912 data-nosnippet>1912</a>/// covers a server that omits the final blank line.
-<a href=#1913 id=1913 data-nosnippet>1913</a></span><span class="kw">fn </span>drain_prompt_frames(st: <span class="kw-2">&amp;mut </span>PromptStreamState, eof: bool) {
-<a href=#1914 id=1914 data-nosnippet>1914</a>    <span class="kw">while let </span><span class="prelude-val">Some</span>(idx) = st.buffer.iter().position(|b| <span class="kw-2">*</span>b == <span class="string">b'\n'</span>) {
-<a href=#1915 id=1915 data-nosnippet>1915</a>        <span class="kw">let </span>raw: Vec&lt;u8&gt; = st.buffer.drain(..=idx).collect();
-<a href=#1916 id=1916 data-nosnippet>1916</a>        <span class="kw">let </span>line = String::from_utf8_lossy(<span class="kw-2">&amp;</span>raw[..raw.len() - <span class="number">1</span>])
-<a href=#1917 id=1917 data-nosnippet>1917</a>            .trim_end_matches(<span class="string">'\r'</span>)
-<a href=#1918 id=1918 data-nosnippet>1918</a>            .to_string();
-<a href=#1919 id=1919 data-nosnippet>1919</a>        handle_prompt_line(st, <span class="kw-2">&amp;</span>line);
-<a href=#1920 id=1920 data-nosnippet>1920</a>    }
-<a href=#1921 id=1921 data-nosnippet>1921</a>    <span class="kw">if </span>eof {
-<a href=#1922 id=1922 data-nosnippet>1922</a>        <span class="kw">if </span>!st.buffer.is_empty() {
-<a href=#1923 id=1923 data-nosnippet>1923</a>            <span class="kw">let </span>raw = std::mem::take(<span class="kw-2">&amp;mut </span>st.buffer);
-<a href=#1924 id=1924 data-nosnippet>1924</a>            <span class="kw">let </span>line = String::from_utf8_lossy(<span class="kw-2">&amp;</span>raw)
-<a href=#1925 id=1925 data-nosnippet>1925</a>                .trim_end_matches(<span class="string">'\r'</span>)
-<a href=#1926 id=1926 data-nosnippet>1926</a>                .to_string();
-<a href=#1927 id=1927 data-nosnippet>1927</a>            handle_prompt_line(st, <span class="kw-2">&amp;</span>line);
-<a href=#1928 id=1928 data-nosnippet>1928</a>        }
-<a href=#1929 id=1929 data-nosnippet>1929</a>        <span class="comment">// A stream that ended without its terminating blank line still has a
-<a href=#1930 id=1930 data-nosnippet>1930</a>        // complete frame buffered; emitting it beats losing the answer.
-<a href=#1931 id=1931 data-nosnippet>1931</a>        </span>flush_prompt_frame(st);
-<a href=#1932 id=1932 data-nosnippet>1932</a>    }
-<a href=#1933 id=1933 data-nosnippet>1933</a>}
-<a href=#1934 id=1934 data-nosnippet>1934</a>
-<a href=#1935 id=1935 data-nosnippet>1935</a><span class="kw">fn </span>handle_prompt_line(st: <span class="kw-2">&amp;mut </span>PromptStreamState, line: <span class="kw-2">&amp;</span>str) {
-<a href=#1936 id=1936 data-nosnippet>1936</a>    <span class="kw">if </span>line.starts_with(<span class="string">':'</span>) {
-<a href=#1937 id=1937 data-nosnippet>1937</a>        <span class="kw">return</span>;
-<a href=#1938 id=1938 data-nosnippet>1938</a>    }
-<a href=#1939 id=1939 data-nosnippet>1939</a>    <span class="comment">// A blank line terminates a frame.
-<a href=#1940 id=1940 data-nosnippet>1940</a>    </span><span class="kw">if </span>line.is_empty() {
-<a href=#1941 id=1941 data-nosnippet>1941</a>        flush_prompt_frame(st);
-<a href=#1942 id=1942 data-nosnippet>1942</a>        <span class="kw">return</span>;
-<a href=#1943 id=1943 data-nosnippet>1943</a>    }
-<a href=#1944 id=1944 data-nosnippet>1944</a>    <span class="kw">if let </span><span class="prelude-val">Some</span>(rest) = line.strip_prefix(<span class="string">"event:"</span>) {
-<a href=#1945 id=1945 data-nosnippet>1945</a>        st.event = rest.trim().to_string();
-<a href=#1946 id=1946 data-nosnippet>1946</a>    } <span class="kw">else if let </span><span class="prelude-val">Some</span>(rest) = line.strip_prefix(<span class="string">"data:"</span>) {
-<a href=#1947 id=1947 data-nosnippet>1947</a>        st.data
-<a href=#1948 id=1948 data-nosnippet>1948</a>            .push(rest.strip_prefix(<span class="string">' '</span>).unwrap_or(rest).to_string());
-<a href=#1949 id=1949 data-nosnippet>1949</a>    }
-<a href=#1950 id=1950 data-nosnippet>1950</a>}
-<a href=#1951 id=1951 data-nosnippet>1951</a>
-<a href=#1952 id=1952 data-nosnippet>1952</a><span class="kw">fn </span>flush_prompt_frame(st: <span class="kw-2">&amp;mut </span>PromptStreamState) {
-<a href=#1953 id=1953 data-nosnippet>1953</a>    <span class="kw">if </span>st.event.is_empty() || st.data.is_empty() {
-<a href=#1954 id=1954 data-nosnippet>1954</a>        st.event.clear();
-<a href=#1955 id=1955 data-nosnippet>1955</a>        st.data.clear();
-<a href=#1956 id=1956 data-nosnippet>1956</a>        <span class="kw">return</span>;
-<a href=#1957 id=1957 data-nosnippet>1957</a>    }
-<a href=#1958 id=1958 data-nosnippet>1958</a>    <span class="kw">let </span>raw = st.data.join(<span class="string">"\n"</span>);
-<a href=#1959 id=1959 data-nosnippet>1959</a>    <span class="kw">let </span>event = std::mem::take(<span class="kw-2">&amp;mut </span>st.event);
-<a href=#1960 id=1960 data-nosnippet>1960</a>    st.data.clear();
-<a href=#1961 id=1961 data-nosnippet>1961</a>
-<a href=#1962 id=1962 data-nosnippet>1962</a>    <span class="kw">let </span>decoded = <span class="kw">match </span>event.as_str() {
-<a href=#1963 id=1963 data-nosnippet>1963</a>        <span class="string">"token" </span>=&gt; {
-<a href=#1964 id=1964 data-nosnippet>1964</a>            <span class="comment">// A server sending bare text instead of a JSON string is still
-<a href=#1965 id=1965 data-nosnippet>1965</a>            // sending a token; do not drop the answer over the quoting.
-<a href=#1966 id=1966 data-nosnippet>1966</a>            </span><span class="kw">let </span>token = serde_json::from_str::&lt;String&gt;(<span class="kw-2">&amp;</span>raw).unwrap_or_else(|<span class="kw">_</span>| raw.clone());
-<a href=#1967 id=1967 data-nosnippet>1967</a>            <span class="prelude-val">Ok</span>(CrawlerPromptEvent::Token(token))
-<a href=#1968 id=1968 data-nosnippet>1968</a>        }
-<a href=#1969 id=1969 data-nosnippet>1969</a>        <span class="string">"source" </span>=&gt; serde_json::from_str::&lt;CrawlerPromptSource&gt;(<span class="kw-2">&amp;</span>raw)
-<a href=#1970 id=1970 data-nosnippet>1970</a>            .map(CrawlerPromptEvent::Source)
-<a href=#1971 id=1971 data-nosnippet>1971</a>            .map_err(ScrapflyError::Json),
-<a href=#1972 id=1972 data-nosnippet>1972</a>        <span class="string">"done" </span>=&gt; serde_json::from_str::&lt;CrawlerPromptDone&gt;(<span class="kw-2">&amp;</span>raw)
-<a href=#1973 id=1973 data-nosnippet>1973</a>            .map(CrawlerPromptEvent::Done)
-<a href=#1974 id=1974 data-nosnippet>1974</a>            .map_err(ScrapflyError::Json),
-<a href=#1975 id=1975 data-nosnippet>1975</a>        <span class="string">"error" </span>=&gt; {
-<a href=#1976 id=1976 data-nosnippet>1976</a>            <span class="kw">let </span>payload: serde_json::Value =
-<a href=#1977 id=1977 data-nosnippet>1977</a>                serde_json::from_str(<span class="kw-2">&amp;</span>raw).unwrap_or(serde_json::Value::Null);
-<a href=#1978 id=1978 data-nosnippet>1978</a>            <span class="prelude-val">Err</span>(ScrapflyError::Api(ApiError {
-<a href=#1979 id=1979 data-nosnippet>1979</a>                code: payload
-<a href=#1980 id=1980 data-nosnippet>1980</a>                    .get(<span class="string">"code"</span>)
-<a href=#1981 id=1981 data-nosnippet>1981</a>                    .and_then(|v| v.as_str())
-<a href=#1982 id=1982 data-nosnippet>1982</a>                    .unwrap_or(<span class="string">"ERR::CRAWLER::UNKNOWN"</span>)
-<a href=#1983 id=1983 data-nosnippet>1983</a>                    .to_string(),
-<a href=#1984 id=1984 data-nosnippet>1984</a>                message: payload
-<a href=#1985 id=1985 data-nosnippet>1985</a>                    .get(<span class="string">"message"</span>)
-<a href=#1986 id=1986 data-nosnippet>1986</a>                    .and_then(|v| v.as_str())
-<a href=#1987 id=1987 data-nosnippet>1987</a>                    .unwrap_or(raw.as_str())
-<a href=#1988 id=1988 data-nosnippet>1988</a>                    .to_string(),
-<a href=#1989 id=1989 data-nosnippet>1989</a>                http_status: <span class="number">200</span>,
-<a href=#1990 id=1990 data-nosnippet>1990</a>                ..Default::default()
-<a href=#1991 id=1991 data-nosnippet>1991</a>            }))
-<a href=#1992 id=1992 data-nosnippet>1992</a>        }
-<a href=#1993 id=1993 data-nosnippet>1993</a>        <span class="kw">_ </span>=&gt; <span class="kw">return</span>,
-<a href=#1994 id=1994 data-nosnippet>1994</a>    };
-<a href=#1995 id=1995 data-nosnippet>1995</a>    st.pending.push_back(decoded);
-<a href=#1996 id=1996 data-nosnippet>1996</a>}
-<a href=#1997 id=1997 data-nosnippet>1997</a>
-<a href=#1998 id=1998 data-nosnippet>1998</a><span class="kw">fn </span>infer_format_from_content_type(ct: <span class="kw-2">&amp;</span>str) -&gt; String {
-<a href=#1999 id=1999 data-nosnippet>1999</a>    <span class="kw">let </span>lc = ct
-<a href=#2000 id=2000 data-nosnippet>2000</a>        .split(<span class="string">';'</span>)
-<a href=#2001 id=2001 data-nosnippet>2001</a>        .next()
-<a href=#2002 id=2002 data-nosnippet>2002</a>        .unwrap_or(<span class="string">""</span>)
-<a href=#2003 id=2003 data-nosnippet>2003</a>        .trim()
-<a href=#2004 id=2004 data-nosnippet>2004</a>        .to_ascii_lowercase();
-<a href=#2005 id=2005 data-nosnippet>2005</a>    <span class="kw">match </span>lc.as_str() {
-<a href=#2006 id=2006 data-nosnippet>2006</a>        <span class="string">"text/html" </span>=&gt; <span class="string">"html"</span>.into(),
-<a href=#2007 id=2007 data-nosnippet>2007</a>        <span class="string">"text/markdown" </span>=&gt; <span class="string">"markdown"</span>.into(),
-<a href=#2008 id=2008 data-nosnippet>2008</a>        <span class="string">"text/plain" </span>=&gt; <span class="string">"text"</span>.into(),
-<a href=#2009 id=2009 data-nosnippet>2009</a>        <span class="string">"application/json" </span>=&gt; <span class="string">"json"</span>.into(),
-<a href=#2010 id=2010 data-nosnippet>2010</a>        <span class="kw">_ </span>=&gt; String::new(),
-<a href=#2011 id=2011 data-nosnippet>2011</a>    }
-<a href=#2012 id=2012 data-nosnippet>2012</a>}
+<a href=#1903 id=1903 data-nosnippet>1903</a>                    st.pending.push_back(<span class="prelude-val">Err</span>(ScrapflyError::Api(ApiError {
+<a href=#1904 id=1904 data-nosnippet>1904</a>                        code: <span class="string">"ERR::CRAWLER::PROMPT_GENERATION_FAILED"</span>.into(),
+<a href=#1905 id=1905 data-nosnippet>1905</a>                        message: <span class="string">"prompt stream ended before the done frame"</span>.into(),
+<a href=#1906 id=1906 data-nosnippet>1906</a>                        http_status: <span class="number">200</span>,
+<a href=#1907 id=1907 data-nosnippet>1907</a>                        ..Default::default()
+<a href=#1908 id=1908 data-nosnippet>1908</a>                    })));
+<a href=#1909 id=1909 data-nosnippet>1909</a>                }
+<a href=#1910 id=1910 data-nosnippet>1910</a>            }
+<a href=#1911 id=1911 data-nosnippet>1911</a>        }
+<a href=#1912 id=1912 data-nosnippet>1912</a>    })
+<a href=#1913 id=1913 data-nosnippet>1913</a>}
+<a href=#1914 id=1914 data-nosnippet>1914</a>
+<a href=#1915 id=1915 data-nosnippet>1915</a><span class="doccomment">/// Pull every complete line out of the buffer and push decoded frames onto
+<a href=#1916 id=1916 data-nosnippet>1916</a>/// `pending`. Only a blank line completes a frame; an unfinished tail at EOF
+<a href=#1917 id=1917 data-nosnippet>1917</a>/// cannot turn an interrupted response into a successful result.
+<a href=#1918 id=1918 data-nosnippet>1918</a></span><span class="kw">fn </span>drain_prompt_frames(st: <span class="kw-2">&amp;mut </span>PromptStreamState) {
+<a href=#1919 id=1919 data-nosnippet>1919</a>    <span class="kw">while let </span><span class="prelude-val">Some</span>(idx) = st.buffer.iter().position(|b| <span class="kw-2">*</span>b == <span class="string">b'\n'</span>) {
+<a href=#1920 id=1920 data-nosnippet>1920</a>        <span class="kw">let </span>raw: Vec&lt;u8&gt; = st.buffer.drain(..=idx).collect();
+<a href=#1921 id=1921 data-nosnippet>1921</a>        <span class="kw">let </span>line = String::from_utf8_lossy(<span class="kw-2">&amp;</span>raw[..raw.len() - <span class="number">1</span>])
+<a href=#1922 id=1922 data-nosnippet>1922</a>            .trim_end_matches(<span class="string">'\r'</span>)
+<a href=#1923 id=1923 data-nosnippet>1923</a>            .to_string();
+<a href=#1924 id=1924 data-nosnippet>1924</a>        handle_prompt_line(st, <span class="kw-2">&amp;</span>line);
+<a href=#1925 id=1925 data-nosnippet>1925</a>        <span class="kw">if </span>st.finished {
+<a href=#1926 id=1926 data-nosnippet>1926</a>            <span class="kw">break</span>;
+<a href=#1927 id=1927 data-nosnippet>1927</a>        }
+<a href=#1928 id=1928 data-nosnippet>1928</a>    }
+<a href=#1929 id=1929 data-nosnippet>1929</a>}
+<a href=#1930 id=1930 data-nosnippet>1930</a>
+<a href=#1931 id=1931 data-nosnippet>1931</a><span class="kw">fn </span>handle_prompt_line(st: <span class="kw-2">&amp;mut </span>PromptStreamState, line: <span class="kw-2">&amp;</span>str) {
+<a href=#1932 id=1932 data-nosnippet>1932</a>    <span class="kw">if </span>line.starts_with(<span class="string">':'</span>) {
+<a href=#1933 id=1933 data-nosnippet>1933</a>        <span class="kw">return</span>;
+<a href=#1934 id=1934 data-nosnippet>1934</a>    }
+<a href=#1935 id=1935 data-nosnippet>1935</a>    <span class="comment">// A blank line terminates a frame.
+<a href=#1936 id=1936 data-nosnippet>1936</a>    </span><span class="kw">if </span>line.is_empty() {
+<a href=#1937 id=1937 data-nosnippet>1937</a>        flush_prompt_frame(st);
+<a href=#1938 id=1938 data-nosnippet>1938</a>        <span class="kw">return</span>;
+<a href=#1939 id=1939 data-nosnippet>1939</a>    }
+<a href=#1940 id=1940 data-nosnippet>1940</a>    <span class="kw">if let </span><span class="prelude-val">Some</span>(rest) = line.strip_prefix(<span class="string">"event:"</span>) {
+<a href=#1941 id=1941 data-nosnippet>1941</a>        st.event = rest.trim().to_string();
+<a href=#1942 id=1942 data-nosnippet>1942</a>    } <span class="kw">else if let </span><span class="prelude-val">Some</span>(rest) = line.strip_prefix(<span class="string">"data:"</span>) {
+<a href=#1943 id=1943 data-nosnippet>1943</a>        st.data
+<a href=#1944 id=1944 data-nosnippet>1944</a>            .push(rest.strip_prefix(<span class="string">' '</span>).unwrap_or(rest).to_string());
+<a href=#1945 id=1945 data-nosnippet>1945</a>    }
+<a href=#1946 id=1946 data-nosnippet>1946</a>}
+<a href=#1947 id=1947 data-nosnippet>1947</a>
+<a href=#1948 id=1948 data-nosnippet>1948</a><span class="kw">fn </span>flush_prompt_frame(st: <span class="kw-2">&amp;mut </span>PromptStreamState) {
+<a href=#1949 id=1949 data-nosnippet>1949</a>    <span class="kw">if </span>st.event.is_empty() || st.data.is_empty() {
+<a href=#1950 id=1950 data-nosnippet>1950</a>        st.event.clear();
+<a href=#1951 id=1951 data-nosnippet>1951</a>        st.data.clear();
+<a href=#1952 id=1952 data-nosnippet>1952</a>        <span class="kw">return</span>;
+<a href=#1953 id=1953 data-nosnippet>1953</a>    }
+<a href=#1954 id=1954 data-nosnippet>1954</a>    <span class="kw">let </span>raw = st.data.join(<span class="string">"\n"</span>);
+<a href=#1955 id=1955 data-nosnippet>1955</a>    <span class="kw">let </span>event = std::mem::take(<span class="kw-2">&amp;mut </span>st.event);
+<a href=#1956 id=1956 data-nosnippet>1956</a>    st.data.clear();
+<a href=#1957 id=1957 data-nosnippet>1957</a>
+<a href=#1958 id=1958 data-nosnippet>1958</a>    <span class="kw">let </span>decoded = <span class="kw">match </span>event.as_str() {
+<a href=#1959 id=1959 data-nosnippet>1959</a>        <span class="string">"token" </span>=&gt; {
+<a href=#1960 id=1960 data-nosnippet>1960</a>            <span class="comment">// A server sending bare text instead of a JSON string is still
+<a href=#1961 id=1961 data-nosnippet>1961</a>            // sending a token; do not drop the answer over the quoting.
+<a href=#1962 id=1962 data-nosnippet>1962</a>            </span><span class="kw">let </span>token = serde_json::from_str::&lt;String&gt;(<span class="kw-2">&amp;</span>raw).unwrap_or_else(|<span class="kw">_</span>| raw.clone());
+<a href=#1963 id=1963 data-nosnippet>1963</a>            <span class="prelude-val">Ok</span>(CrawlerPromptEvent::Token(token))
+<a href=#1964 id=1964 data-nosnippet>1964</a>        }
+<a href=#1965 id=1965 data-nosnippet>1965</a>        <span class="string">"source" </span>=&gt; serde_json::from_str::&lt;CrawlerPromptSource&gt;(<span class="kw-2">&amp;</span>raw)
+<a href=#1966 id=1966 data-nosnippet>1966</a>            .map(CrawlerPromptEvent::Source)
+<a href=#1967 id=1967 data-nosnippet>1967</a>            .map_err(ScrapflyError::Json),
+<a href=#1968 id=1968 data-nosnippet>1968</a>        <span class="string">"done" </span>=&gt; serde_json::from_str::&lt;CrawlerPromptDone&gt;(<span class="kw-2">&amp;</span>raw)
+<a href=#1969 id=1969 data-nosnippet>1969</a>            .map(CrawlerPromptEvent::Done)
+<a href=#1970 id=1970 data-nosnippet>1970</a>            .map_err(ScrapflyError::Json),
+<a href=#1971 id=1971 data-nosnippet>1971</a>        <span class="string">"error" </span>=&gt; {
+<a href=#1972 id=1972 data-nosnippet>1972</a>            <span class="kw">let </span>payload: serde_json::Value =
+<a href=#1973 id=1973 data-nosnippet>1973</a>                serde_json::from_str(<span class="kw-2">&amp;</span>raw).unwrap_or(serde_json::Value::Null);
+<a href=#1974 id=1974 data-nosnippet>1974</a>            <span class="prelude-val">Err</span>(ScrapflyError::Api(ApiError {
+<a href=#1975 id=1975 data-nosnippet>1975</a>                code: payload
+<a href=#1976 id=1976 data-nosnippet>1976</a>                    .get(<span class="string">"code"</span>)
+<a href=#1977 id=1977 data-nosnippet>1977</a>                    .and_then(|v| v.as_str())
+<a href=#1978 id=1978 data-nosnippet>1978</a>                    .unwrap_or(<span class="string">"ERR::CRAWLER::UNKNOWN"</span>)
+<a href=#1979 id=1979 data-nosnippet>1979</a>                    .to_string(),
+<a href=#1980 id=1980 data-nosnippet>1980</a>                message: payload
+<a href=#1981 id=1981 data-nosnippet>1981</a>                    .get(<span class="string">"message"</span>)
+<a href=#1982 id=1982 data-nosnippet>1982</a>                    .and_then(|v| v.as_str())
+<a href=#1983 id=1983 data-nosnippet>1983</a>                    .unwrap_or(raw.as_str())
+<a href=#1984 id=1984 data-nosnippet>1984</a>                    .to_string(),
+<a href=#1985 id=1985 data-nosnippet>1985</a>                http_status: <span class="number">200</span>,
+<a href=#1986 id=1986 data-nosnippet>1986</a>                ..Default::default()
+<a href=#1987 id=1987 data-nosnippet>1987</a>            }))
+<a href=#1988 id=1988 data-nosnippet>1988</a>        }
+<a href=#1989 id=1989 data-nosnippet>1989</a>        <span class="kw">_ </span>=&gt; <span class="kw">return</span>,
+<a href=#1990 id=1990 data-nosnippet>1990</a>    };
+<a href=#1991 id=1991 data-nosnippet>1991</a>    <span class="kw">if </span><span class="macro">matches!</span>(<span class="kw-2">&amp;</span>decoded, <span class="prelude-val">Ok</span>(CrawlerPromptEvent::Done(<span class="kw">_</span>)) | <span class="prelude-val">Err</span>(<span class="kw">_</span>)) {
+<a href=#1992 id=1992 data-nosnippet>1992</a>        st.finished = <span class="bool-val">true</span>;
+<a href=#1993 id=1993 data-nosnippet>1993</a>    }
+<a href=#1994 id=1994 data-nosnippet>1994</a>    st.pending.push_back(decoded);
+<a href=#1995 id=1995 data-nosnippet>1995</a>}
+<a href=#1996 id=1996 data-nosnippet>1996</a>
+<a href=#1997 id=1997 data-nosnippet>1997</a><span class="kw">fn </span>infer_format_from_content_type(ct: <span class="kw-2">&amp;</span>str) -&gt; String {
+<a href=#1998 id=1998 data-nosnippet>1998</a>    <span class="kw">let </span>lc = ct
+<a href=#1999 id=1999 data-nosnippet>1999</a>        .split(<span class="string">';'</span>)
+<a href=#2000 id=2000 data-nosnippet>2000</a>        .next()
+<a href=#2001 id=2001 data-nosnippet>2001</a>        .unwrap_or(<span class="string">""</span>)
+<a href=#2002 id=2002 data-nosnippet>2002</a>        .trim()
+<a href=#2003 id=2003 data-nosnippet>2003</a>        .to_ascii_lowercase();
+<a href=#2004 id=2004 data-nosnippet>2004</a>    <span class="kw">match </span>lc.as_str() {
+<a href=#2005 id=2005 data-nosnippet>2005</a>        <span class="string">"text/html" </span>=&gt; <span class="string">"html"</span>.into(),
+<a href=#2006 id=2006 data-nosnippet>2006</a>        <span class="string">"text/markdown" </span>=&gt; <span class="string">"markdown"</span>.into(),
+<a href=#2007 id=2007 data-nosnippet>2007</a>        <span class="string">"text/plain" </span>=&gt; <span class="string">"text"</span>.into(),
+<a href=#2008 id=2008 data-nosnippet>2008</a>        <span class="string">"application/json" </span>=&gt; <span class="string">"json"</span>.into(),
+<a href=#2009 id=2009 data-nosnippet>2009</a>        <span class="kw">_ </span>=&gt; String::new(),
+<a href=#2010 id=2010 data-nosnippet>2010</a>    }
+<a href=#2011 id=2011 data-nosnippet>2011</a>}
 </code></pre></div></section></main></body></html>

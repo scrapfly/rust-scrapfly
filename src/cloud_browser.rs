@@ -529,9 +529,8 @@ impl Client {
     // `cloud_browser_vault_rotate` is the ONLY copy. The SDK forwards it
     // transiently in the `X-Vault-Key` header on the few endpoints that
     // need it (item create/update with secret rotation, vault rotate)
-    // and never logs, prints, formats, or otherwise persists it. Loud
-    // rule documented at:
-    //   /root/.claude/projects/-root-scrapfly-apps/memory/agent_secret_tokenization_boundary.md
+    // and never logs, prints, formats, or otherwise persists it. Any
+    // change here must preserve that property.
     // ------------------------------------------------------------------
 
     /// Create a new credential vault. The server returns a freshly

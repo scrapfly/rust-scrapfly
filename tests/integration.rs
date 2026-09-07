@@ -15,13 +15,8 @@
 //! NOT prove the API still honours the `unblocker` SPELLING, because no SDK
 //! leg ever sends it — every leg below logs `wire[unblocker]=None`.
 //!
-//! That spelling is a real, separately deployed code path — see
-//! `apps/scrapfly/api/scrapfly-api/pkg/scraper/config.go`:
-//!
-//! ```text
-//! asp := queryParams.Get("asp")
-//! if asp == "" { asp = queryParams.Get("unblocker") }
-//! ```
+//! That spelling is a separate code path in the API itself: it reads the `asp`
+//! query parameter first and falls back to `unblocker` when `asp` is absent.
 //!
 //! It is what a customer on a raw HTTP client depends on, and the API silently
 //! ignores query params it does not recognise, so deleting it would make
@@ -45,10 +40,9 @@
 //!
 //! # TLS
 //!
-//! The dev cluster serves a certificate signed by "Scrapfly Dev Root CA".
-//! Verification is kept ON: the root is loaded from `SCRAPFLY_CA_BUNDLE`, or
-//! from the well-known path where the local dev environment installs it, and
-//! handed to `reqwest` as an extra trust anchor. `SCRAPFLY_INSECURE_TLS=1`
+//! Verification is kept ON. An endpoint whose certificate the system store
+//! cannot verify is served by pointing `SCRAPFLY_CA_BUNDLE` at its root, which
+//! is handed to `reqwest` as an extra trust anchor. `SCRAPFLY_INSECURE_TLS=1`
 //! exists as an explicit last-resort escape hatch and prints a loud warning
 //! when used; it is not the default and is not needed on the dev cluster.
 //! Nothing here adds a dependency or a crate feature — `reqwest` is already a
@@ -72,7 +66,7 @@
 //!
 //! Run with:
 //! ```text
-//! SCRAPFLY_API_KEY=scp-live-... SCRAPFLY_API_HOST=https://api.scrapfly.home \
+//! SCRAPFLY_API_KEY=scp-live-... \
 //!   cargo test --offline --test integration -- --nocapture
 //! ```
 
@@ -86,10 +80,6 @@ use scrapfly_sdk::{Client, OnRequest, ScrapeConfig, ScrapflyError};
 /// Small, stable, cheap. Not anti-bot protected, so a leg that fails fails
 /// because of the alias plumbing and not because a shield won.
 const TARGET_URL: &str = "https://httpbin.dev/html";
-
-/// Where the local dev environment installs the root that signs
-/// `*.scrapfly.home`. Overridden by `SCRAPFLY_CA_BUNDLE`.
-const DEV_CA_BUNDLE: &str = "/usr/local/share/ca-certificates/scrapfly-local-ca.crt";
 
 /// Spacing between legs. The legs are already strictly sequential — each
 /// `scrape()` is awaited to completion before the next starts — but the dev
@@ -150,9 +140,6 @@ fn ca_bundle_path() -> Option<String> {
         if !p.is_empty() {
             return Some(p);
         }
-    }
-    if std::path::Path::new(DEV_CA_BUNDLE).exists() {
-        return Some(DEV_CA_BUNDLE.to_string());
     }
     None
 }

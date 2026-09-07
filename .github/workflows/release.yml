@@ -59,8 +59,8 @@ jobs:
         run: cargo build --release --all-targets
 
       - name: Run unit tests
-        # Library unit tests only — no network. Integration harness lives
-        # in scrapfly-apps/sdk/integration and is exercised separately.
+        # Library unit tests only — no network. The live integration
+        # harness is exercised separately.
         run: cargo test --lib --release
 
       - name: Publish (dry-run)
