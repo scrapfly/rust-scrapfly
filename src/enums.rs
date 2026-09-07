@@ -1,4 +1,4 @@
-//! Strongly-typed enums mirroring `sdk/go/enums.go`.
+//! Strongly-typed enums mirroring the Go SDK's `enums.go`.
 //!
 //! Every enum serializes to its lowercase wire-format string via `serde(rename_all = ...)`.
 

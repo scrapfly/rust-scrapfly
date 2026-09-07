@@ -294,7 +294,7 @@ pub struct CrawlerSearchState {
     /// Chunks still waiting to be embedded at snapshot time.
     #[serde(default)]
     pub queue_depth: u64,
-    /// Published Lance fragments.
+    /// Published index fragments.
     #[serde(default)]
     pub fragments: u64,
     /// Failure reason when `status` is `FAILED`.

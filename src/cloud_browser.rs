@@ -86,7 +86,7 @@ pub struct BrowserConfig {
     /// Enable MCP (Model Context Protocol) support.
     #[serde(skip_serializing_if = "is_false")]
     pub enable_mcp: bool,
-    /// Arm Scrapium's built-in captcha detector + solver on the first page attach.
+    /// Arm Scrapfly's built-in captcha detector + solver on the first page attach.
     /// Turnstile, DataDome slider, reCAPTCHA, GeeTest, PerimeterX hold, and
     /// puzzle captchas are handled automatically. Billed per solve; failures
     /// cost nothing. See <https://scrapfly.io/docs/cloud-browser-api/captcha-solver>.
@@ -103,7 +103,7 @@ pub struct BrowserConfig {
     /// Customer-held base64-encoded 32-byte vault key. Forwarded transiently
     /// on the WebSocket query string and zeroed by the server after items
     /// are decrypted. The SDK never logs or echoes this value — see the
-    /// E2EE boundary documentation in the project's HIPAA evidence pack.
+    /// end-to-end-encryption notes at <https://scrapfly.io/docs/cloud-browser-api/vault>.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vault_key: Option<String>,
 
@@ -731,8 +731,8 @@ impl Client {
     /// Create a new item in a vault. The vault key is required to
     /// envelope-encrypt the per-item DEK; it is forwarded transiently
     /// in the `X-Vault-Key` header. Caller-supplied `item` JSON shape
-    /// follows the documented contract (see itemCreateRequest in
-    /// pkg/vault/controller.go) — typically:
+    /// follows the documented item contract at
+    /// <https://scrapfly.io/docs/cloud-browser-api/vault> — typically:
     ///
     /// ```json
     /// {

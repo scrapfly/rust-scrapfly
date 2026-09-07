@@ -307,8 +307,8 @@ customer-held key.</p>
 ) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.95.0/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="enum" href="https://docs.rs/serde_json/1.0.149/serde_json/value/enum.Value.html" title="enum serde_json::value::Value">Value</a>, <a class="enum" href="../error/enum.ScrapflyError.html" title="enum scrapfly_sdk::error::ScrapflyError">ScrapflyError</a>&gt;</h4></section></summary><div class="docblock"><p>Create a new item in a vault. The vault key is required to
 envelope-encrypt the per-item DEK; it is forwarded transiently
 in the <code>X-Vault-Key</code> header. Caller-supplied <code>item</code> JSON shape
-follows the documented contract (see itemCreateRequest in
-pkg/vault/controller.go) — typically:</p>
+follows the documented item contract at
+<a href="https://scrapfly.io/docs/cloud-browser-api/vault">https://scrapfly.io/docs/cloud-browser-api/vault</a> — typically:</p>
 <div class="example-wrap"><pre class="language-json"><code>{
   &quot;type&quot;: &quot;password&quot;,
   &quot;label&quot;: &quot;...&quot;,

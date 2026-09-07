@@ -1,5 +1,5 @@
 # Scrapfly Rust SDK — release/dev Makefile.
-# Target names mirror sdk/python/Makefile for muscle-memory parity.
+# Target names mirror the other Scrapfly SDK Makefiles for parity.
 
 VERSION ?=
 NEXT_VERSION ?=

@@ -910,7 +910,7 @@ const PROMPT_STREAM_BODY: &str = concat!(
     "data: \"is a product.\"\n",
     "\n",
     "event: done\n",
-    "data: {\"usage\": {\"prompt_token_count\": 4312, \"candidates_token_count\": 96, \"thoughts_token_count\": 512, \"total_token_count\": 4920, \"cost\": {\"input\": 0.000431, \"output\": 0.000243}, \"model\": \"gemini-2.5-flash\"}, \"sources_used\": [1], \"sources_dropped\": 2, \"truncated\": false}\n",
+    "data: {\"usage\": {\"prompt_token_count\": 4312, \"candidates_token_count\": 96, \"thoughts_token_count\": 512, \"total_token_count\": 4920, \"cost\": {\"input\": 0.000431, \"output\": 0.000243}, \"model\": \"provider-model-id\"}, \"sources_used\": [1], \"sources_dropped\": 2, \"truncated\": false}\n",
     "\n",
 );
 
@@ -1088,7 +1088,7 @@ fn crawler_refresh_timeline_tolerates_null_lists() {
 #[test]
 fn crawler_prompt_done_tolerates_a_null_citation_list() {
     let frame = br#"{"usage": {"prompt_token_count": 10, "candidates_token_count": 2,
-                               "total_token_count": 12, "model": "gemini-2.5-flash"},
+                               "total_token_count": 12, "model": "provider-model-id"},
                      "sources_used": null, "sources_dropped": 0, "truncated": false}"#;
     let done: CrawlerPromptDone = serde_json::from_slice(frame).expect("valid done frame");
     assert!(done.sources_used.is_empty());
@@ -1177,7 +1177,7 @@ fn crawler_webhook_decodes_the_search_deliveries_without_an_action() {
                   "state": {"urls_visited": 5},
                   "links": {"status": "https://api.scrapfly.io/crawl/abc/status"},
                   "search": {"status": "READY", "documents": 5, "vectors": 41,
-                             "embedding_model": "gemini-embedding-001",
+                             "embedding_model": "provider-embedding-model",
                              "embedding_dimension": 1536}}
     }"#;
     let webhook = CrawlerWebhook::from_slice(body).expect("known event");
@@ -1634,7 +1634,7 @@ struct ParityRow {
 /// resolve `asp=false, unblocker=true` to OFF, as pinned here. GO ANSWERS ON
 /// for that one row: its `ASP` field is a plain `bool`, so a supplied `false`
 /// is byte-identical to the zero value and cannot be honoured. That divergence
-/// is documented in go/unblocker.go and go/README.md, and the Go test row that
+/// is documented in the Go SDK's `unblocker.go` and README, and the Go test row that
 /// pins it is named
 /// GO_LANGUAGE_FORCED_EXCEPTION_documented_divergence_not_a_bug. It is the ONLY
 /// cell where the four SDKs disagree; nothing here may be "fixed" to match Go.

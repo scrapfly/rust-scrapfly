@@ -86,7 +86,7 @@
 <a href=#86 id=86 data-nosnippet>86</a>    <span class="doccomment">/// Enable MCP (Model Context Protocol) support.
 <a href=#87 id=87 data-nosnippet>87</a>    </span><span class="attr">#[serde(skip_serializing_if = <span class="string">"is_false"</span>)]
 <a href=#88 id=88 data-nosnippet>88</a>    </span><span class="kw">pub </span>enable_mcp: bool,
-<a href=#89 id=89 data-nosnippet>89</a>    <span class="doccomment">/// Arm Scrapium's built-in captcha detector + solver on the first page attach.
+<a href=#89 id=89 data-nosnippet>89</a>    <span class="doccomment">/// Arm Scrapfly's built-in captcha detector + solver on the first page attach.
 <a href=#90 id=90 data-nosnippet>90</a>    /// Turnstile, DataDome slider, reCAPTCHA, GeeTest, PerimeterX hold, and
 <a href=#91 id=91 data-nosnippet>91</a>    /// puzzle captchas are handled automatically. Billed per solve; failures
 <a href=#92 id=92 data-nosnippet>92</a>    /// cost nothing. See &lt;https://scrapfly.io/docs/cloud-browser-api/captcha-solver&gt;.
@@ -103,7 +103,7 @@
 <a href=#103 id=103 data-nosnippet>103</a>    <span class="doccomment">/// Customer-held base64-encoded 32-byte vault key. Forwarded transiently
 <a href=#104 id=104 data-nosnippet>104</a>    /// on the WebSocket query string and zeroed by the server after items
 <a href=#105 id=105 data-nosnippet>105</a>    /// are decrypted. The SDK never logs or echoes this value — see the
-<a href=#106 id=106 data-nosnippet>106</a>    /// E2EE boundary documentation in the project's HIPAA evidence pack.
+<a href=#106 id=106 data-nosnippet>106</a>    /// end-to-end-encryption notes at &lt;https://scrapfly.io/docs/cloud-browser-api/vault&gt;.
 <a href=#107 id=107 data-nosnippet>107</a>    </span><span class="attr">#[serde(skip_serializing_if = <span class="string">"Option::is_none"</span>)]
 <a href=#108 id=108 data-nosnippet>108</a>    </span><span class="kw">pub </span>vault_key: <span class="prelude-ty">Option</span>&lt;String&gt;,
 <a href=#109 id=109 data-nosnippet>109</a>
@@ -731,8 +731,8 @@
 <a href=#731 id=731 data-nosnippet>731</a>    <span class="doccomment">/// Create a new item in a vault. The vault key is required to
 <a href=#732 id=732 data-nosnippet>732</a>    /// envelope-encrypt the per-item DEK; it is forwarded transiently
 <a href=#733 id=733 data-nosnippet>733</a>    /// in the `X-Vault-Key` header. Caller-supplied `item` JSON shape
-<a href=#734 id=734 data-nosnippet>734</a>    /// follows the documented contract (see itemCreateRequest in
-<a href=#735 id=735 data-nosnippet>735</a>    /// pkg/vault/controller.go) — typically:
+<a href=#734 id=734 data-nosnippet>734</a>    /// follows the documented item contract at
+<a href=#735 id=735 data-nosnippet>735</a>    /// &lt;https://scrapfly.io/docs/cloud-browser-api/vault&gt; — typically:
 <a href=#736 id=736 data-nosnippet>736</a>    ///
 <a href=#737 id=737 data-nosnippet>737</a>    /// ```json
 <a href=#738 id=738 data-nosnippet>738</a>    /// {
