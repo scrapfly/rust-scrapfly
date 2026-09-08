@@ -2108,7 +2108,11 @@ fn unblocker_truth_table_holds_on_the_loaded_configs_too() {
             let scrape = apply_scrape(loaded_scrape_builder(), row, order)
                 .build()
                 .expect("build");
-            assert_eq!(scrape.unblocker_enabled(), row.enabled, "{ctx}: loaded scrape");
+            assert_eq!(
+                scrape.unblocker_enabled(),
+                row.enabled,
+                "{ctx}: loaded scrape"
+            );
             let pairs = scrape_pairs_ordered(&scrape);
             assert_not_vacuous(&pairs, "loaded scrape query pairs");
             assert_eq!(
@@ -2123,7 +2127,11 @@ fn unblocker_truth_table_holds_on_the_loaded_configs_too() {
             let crawler = apply_crawler(loaded_crawler_builder(), row, order)
                 .build()
                 .expect("build");
-            assert_eq!(crawler.unblocker_enabled(), row.enabled, "{ctx}: loaded crawler");
+            assert_eq!(
+                crawler.unblocker_enabled(),
+                row.enabled,
+                "{ctx}: loaded crawler"
+            );
             let want = row.enabled.then_some(serde_json::Value::Bool(true));
             assert_eq!(
                 crawl_body(&crawler)

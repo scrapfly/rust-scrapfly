@@ -47,6 +47,13 @@
 
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
+// `ApiError` is 136 bytes, so every `ScrapflyError` carrying one trips
+// `clippy::result_large_err`. The lint's remedy is boxing the payload —
+// `ScrapflyError::Api(ApiError)` would become `Api(Box<ApiError>)` — which
+// breaks every caller that constructs or `match`es these variants. This crate
+// does not break those call sites for cosmetics; the same rule keeps
+// `AspBypassFailed` under its old name (see `error::ScrapflyError`).
+#![allow(clippy::result_large_err)]
 
 pub mod batch;
 pub mod client;

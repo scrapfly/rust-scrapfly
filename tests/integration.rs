@@ -449,7 +449,12 @@ async fn run_raw_alias_leg(creds: &Creds) -> RawLeg {
 
     println!(
         "  leg {:<18} -> API HTTP {} upstream={} success={} config.asp={} uuid={}",
-        "raw unblocker=true", leg.http_status, leg.upstream_status, leg.success, leg.echoed_asp, leg.uuid
+        "raw unblocker=true",
+        leg.http_status,
+        leg.upstream_status,
+        leg.success,
+        leg.echoed_asp,
+        leg.uuid
     );
     println!("      request: {}", redact_key(&leg.url));
 
