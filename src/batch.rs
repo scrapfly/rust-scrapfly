@@ -276,7 +276,7 @@ where
                         let bytes_ref: &[u8] = header_block.as_ref();
 
                         for line in bytes_ref.split(|b: &u8| *b == b'\n') {
-                            let line: &[u8] = if let Some(l) = line.strip_suffix(&[b'\r'][..]) {
+                            let line: &[u8] = if let Some(l) = line.strip_suffix(b"\r") {
                                 l
                             } else {
                                 line
