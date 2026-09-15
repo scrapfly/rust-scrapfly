@@ -63,15 +63,12 @@ pub struct BrowserConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolution: Option<String>,
     /// URL this session will scrape. It is not navigated to — the browser still
-    /// goes wherever you drive it over CDP — but declaring it lets Scrapfly pick
-    /// the proxy and fingerprint for that site before the browser starts.
+    /// goes wherever you drive it over CDP — but declaring it helps Scrapfly's
+    /// proxy network route the traffic accordingly and pick the fingerprint for
+    /// that site before the browser starts.
     ///
-    /// Strongly recommended. A proxy network is chosen once per session, and some
-    /// upstream providers refuse whole categories of destination (government
-    /// portals, for example). Without it that choice is made blind, and a session
-    /// routed to a provider that refuses the target fails at connection time:
-    /// Chromium renders its own `ERR_SOCKS_CONNECTION_FAILED` page and no page
-    /// data is returned.
+    /// Strongly recommended. Routing is decided once, when the session opens, so
+    /// a session declared without a target cannot be re-routed afterwards.
     ///
     /// Must be an absolute URL including the scheme (`https://example.com`); a
     /// bare hostname is rejected server-side.
