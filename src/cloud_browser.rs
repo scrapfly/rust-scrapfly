@@ -201,6 +201,20 @@ fn rest_base(host: &str) -> String {
     }
 }
 
+/// Drop `token_item_id` from a caller-supplied `linked_service_data`.
+///
+/// The server owns that id on both /service routes: the link seals the token
+/// blob and binds the id it just created, and the update keeps the stored one,
+/// so a body can never redirect the token lookup at another row. A
+/// get-modify-update round trip carries the field back, and sending it would
+/// suggest a caller can choose it.
+fn strip_token_item_id(mut data: serde_json::Value) -> serde_json::Value {
+    if let Some(map) = data.as_object_mut() {
+        map.remove("token_item_id");
+    }
+    data
+}
+
 /// Unblock request body.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct UnblockConfig {
@@ -834,6 +848,254 @@ impl Client {
             .map_err(|e| ScrapflyError::Config(format!("invalid vault url: {}", e)))?;
         let resp = self
             .send_with_retry(Method::DELETE, url, None, None)
+            .await?;
+        let status = resp.status().as_u16();
+        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        if status != 200 {
+            return Err(from_response(status, &body, 0, false));
+        }
+        Ok(serde_json::from_slice(&body)?)
+    }
+
+    // ------------------------------------------------------------------
+    // Linked secret manager — /vault/{id}/service (1Password today).
+    //
+    // The provider's service-account token is sealed as a vault item like
+    // any other, so `X-Vault-Key` travels with every call that seals or
+    // opens one (link, token rotation, sync, probe) and is handled exactly
+    // as above: forwarded transiently, never logged or persisted.
+    // ------------------------------------------------------------------
+
+    /// Link a vault to an external secret manager. `linked_service` is the
+    /// provider discriminator (`1password`), `token` its service-account
+    /// token, and `linked_service_data` the non-secret selection rules —
+    /// `vault_id` or `vault_name` is required, `sync_mode`
+    /// (`manual`/`on_session`) and `sync_ttl_s` are optional:
+    ///
+    /// ```json
+    /// {"vault_name": "Scrapfly", "sync_mode": "on_session", "sync_ttl_s": 900}
+    /// ```
+    ///
+    /// `vault_key` is REQUIRED although nothing is read back: the server
+    /// verifies it before sealing the token, because a well-formed wrong
+    /// key would link the vault and leave a token every later sync fails
+    /// to open.
+    ///
+    /// Linking does not contact the provider — a bad token surfaces on the
+    /// first [`Client::cloud_browser_vault_service_sync`], so probe with
+    /// [`Client::cloud_browser_vault_service_test`] first.
+    pub async fn cloud_browser_vault_service_link(
+        &self,
+        vault_id: &str,
+        vault_key: &str,
+        linked_service: &str,
+        token: &str,
+        linked_service_data: serde_json::Value,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        let url = format!(
+            "{}/vault/{}/service?key={}",
+            rest_base(self.cloud_browser_host()),
+            vault_id,
+            self.api_key()
+        );
+        let url = Url::parse(&url)
+            .map_err(|e| ScrapflyError::Config(format!("invalid vault url: {}", e)))?;
+        let body = serde_json::json!({
+            "linked_service": linked_service,
+            "token": token,
+            "linked_service_data": strip_token_item_id(linked_service_data),
+        });
+        let body_bytes = serde_json::to_vec(&body)?;
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        headers.insert(
+            "X-Vault-Key",
+            HeaderValue::from_str(vault_key)
+                .map_err(|_| ScrapflyError::Config("X-Vault-Key contained invalid bytes".into()))?,
+        );
+        let resp = self
+            .send_with_retry(Method::POST, url, Some(headers), Some(body_bytes))
+            .await?;
+        let status = resp.status().as_u16();
+        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        if status != 200 {
+            return Err(from_response(status, &body, 0, false));
+        }
+        Ok(serde_json::from_slice(&body)?)
+    }
+
+    /// Update an existing link: rotate the service-account token, replace
+    /// the selection rules, or both. `vault_key` is REQUIRED iff `token`
+    /// is `Some` — a metadata-only update needs no key, the same rule as
+    /// [`Client::cloud_browser_vault_item_update`].
+    ///
+    /// The provider itself cannot be switched here (the server keeps the
+    /// stored `linked_service`), which is why there is no
+    /// `linked_service` parameter.
+    pub async fn cloud_browser_vault_service_update(
+        &self,
+        vault_id: &str,
+        vault_key: Option<&str>,
+        token: Option<&str>,
+        linked_service_data: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        let url = format!(
+            "{}/vault/{}/service?key={}",
+            rest_base(self.cloud_browser_host()),
+            vault_id,
+            self.api_key()
+        );
+        let url = Url::parse(&url)
+            .map_err(|e| ScrapflyError::Config(format!("invalid vault url: {}", e)))?;
+        let mut body_map = serde_json::Map::new();
+        if let Some(t) = token {
+            body_map.insert("token".into(), serde_json::Value::String(t.into()));
+        }
+        if let Some(data) = linked_service_data {
+            body_map.insert("linked_service_data".into(), strip_token_item_id(data));
+        }
+        let body_bytes = serde_json::to_vec(&serde_json::Value::Object(body_map))?;
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        if let Some(k) = vault_key {
+            headers.insert(
+                "X-Vault-Key",
+                HeaderValue::from_str(k).map_err(|_| {
+                    ScrapflyError::Config("X-Vault-Key contained invalid bytes".into())
+                })?,
+            );
+        }
+        let resp = self
+            .send_with_retry(Method::PATCH, url, Some(headers), Some(body_bytes))
+            .await?;
+        let status = resp.status().as_u16();
+        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        if status != 200 {
+            return Err(from_response(status, &body, 0, false));
+        }
+        Ok(serde_json::from_slice(&body)?)
+    }
+
+    /// Unlink the provider. `keep_items = true` releases the mirrored rows
+    /// as manual items; `false` DELETES them, which cannot be undone. The
+    /// sealed service-account token is removed either way.
+    ///
+    /// The flag is always put on the wire: the server defaults to keeping
+    /// the items, and no omission or transport quirk here may turn that
+    /// into a delete. No vault key — nothing is sealed or opened.
+    pub async fn cloud_browser_vault_service_unlink(
+        &self,
+        vault_id: &str,
+        keep_items: bool,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        let url = format!(
+            "{}/vault/{}/service?keep_items={}&key={}",
+            rest_base(self.cloud_browser_host()),
+            vault_id,
+            keep_items,
+            self.api_key()
+        );
+        let url = Url::parse(&url)
+            .map_err(|e| ScrapflyError::Config(format!("invalid vault url: {}", e)))?;
+        let resp = self
+            .send_with_retry(Method::DELETE, url, None, None)
+            .await?;
+        let status = resp.status().as_u16();
+        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        if status != 200 {
+            return Err(from_response(status, &body, 0, false));
+        }
+        Ok(serde_json::from_slice(&body)?)
+    }
+
+    /// Force a sync now, bypassing both the TTL and the hour-long
+    /// back-off a failed run leaves behind. Returns the flat report:
+    /// `imported`, `updated`, `deleted`, `skipped`, `unmirrored`,
+    /// `status`, `warnings`.
+    ///
+    /// The server's own budget is 25 s, inside the client's 150 s default
+    /// timeout; a [`crate::client::ClientBuilder::timeout`] set below that
+    /// budget cuts the call off before the server can answer.
+    pub async fn cloud_browser_vault_service_sync(
+        &self,
+        vault_id: &str,
+        vault_key: &str,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        let url = format!(
+            "{}/vault/{}/service/sync?key={}",
+            rest_base(self.cloud_browser_host()),
+            vault_id,
+            self.api_key()
+        );
+        let url = Url::parse(&url)
+            .map_err(|e| ScrapflyError::Config(format!("invalid vault url: {}", e)))?;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-Vault-Key",
+            HeaderValue::from_str(vault_key)
+                .map_err(|_| ScrapflyError::Config("X-Vault-Key contained invalid bytes".into()))?,
+        );
+        let resp = self
+            .send_with_retry(Method::POST, url, Some(headers), None)
+            .await?;
+        let status = resp.status().as_u16();
+        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        if status != 200 {
+            return Err(from_response(status, &body, 0, false));
+        }
+        Ok(serde_json::from_slice(&body)?)
+    }
+
+    /// Probe the provider credentials and enumerate what the service
+    /// account can reach: `vaults_visible`, `item_count`, `warnings`.
+    ///
+    /// Both `linked_service` and `token` are optional. Passing a `token`
+    /// probes a vault that is not linked yet, which is how an upstream
+    /// vault is chosen before committing to a link; `None` for both probes
+    /// the token already sealed in the vault and therefore requires the
+    /// vault to be linked. Nothing is persisted either way.
+    ///
+    /// The server's own budget is 10 s, inside the client's 150 s default
+    /// timeout; a [`crate::client::ClientBuilder::timeout`] set below that
+    /// budget cuts the call off before the server can answer.
+    pub async fn cloud_browser_vault_service_test(
+        &self,
+        vault_id: &str,
+        vault_key: &str,
+        linked_service: Option<&str>,
+        token: Option<&str>,
+    ) -> Result<serde_json::Value, ScrapflyError> {
+        let url = format!(
+            "{}/vault/{}/service/test?key={}",
+            rest_base(self.cloud_browser_host()),
+            vault_id,
+            self.api_key()
+        );
+        let url = Url::parse(&url)
+            .map_err(|e| ScrapflyError::Config(format!("invalid vault url: {}", e)))?;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-Vault-Key",
+            HeaderValue::from_str(vault_key)
+                .map_err(|_| ScrapflyError::Config("X-Vault-Key contained invalid bytes".into()))?,
+        );
+        let mut body_map = serde_json::Map::new();
+        if let Some(s) = linked_service {
+            body_map.insert("linked_service".into(), serde_json::Value::String(s.into()));
+        }
+        if let Some(t) = token {
+            body_map.insert("token".into(), serde_json::Value::String(t.into()));
+        }
+        // An empty request body is what selects the sealed-token probe, so
+        // nothing is sent when neither field is set.
+        let body_bytes = if body_map.is_empty() {
+            None
+        } else {
+            headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+            Some(serde_json::to_vec(&serde_json::Value::Object(body_map))?)
+        };
+        let resp = self
+            .send_with_retry(Method::POST, url, Some(headers), body_bytes)
             .await?;
         let status = resp.status().as_u16();
         let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
