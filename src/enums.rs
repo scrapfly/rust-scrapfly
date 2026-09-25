@@ -1,6 +1,6 @@
 //! Strongly-typed enums mirroring the Go SDK's `enums.go`.
 //!
-//! Every enum serializes to its lowercase wire-format string via `serde(rename_all = ...)`.
+//! Every enum serializes to its wire-format string via a serde rename.
 
 use serde::{Deserialize, Serialize};
 
@@ -402,6 +402,31 @@ impl CrawlerWebhookEvent {
             Self::CrawlerSearchReady => "crawler_search_ready",
             Self::CrawlerSearchFailed => "crawler_search_failed",
             Self::CrawlerUpdated => "crawler_updated",
+        }
+    }
+}
+
+/// External secret manager a Cloud Browser vault mirrors.
+///
+/// The server keys its decoder on this discriminator and rejects anything
+/// outside the registry (`pkg/vault` `ErrUnknownLinkedService`), so the set is
+/// closed to what `linkedServiceRegistry` holds.
+///
+/// Closed on purpose, unlike the Python, Go and TypeScript SDKs which also take
+/// a raw string: a provider registered server-side needs a release of this crate
+/// before a caller here can name it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VaultLinkedService {
+    /// 1Password, via a service-account token.
+    #[serde(rename = "1password")]
+    OnePassword,
+}
+
+impl VaultLinkedService {
+    /// Wire-format string.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::OnePassword => "1password",
         }
     }
 }

@@ -5,6 +5,7 @@ use reqwest::{Method, Url};
 use serde::{Deserialize, Serialize};
 
 use crate::client::Client;
+use crate::enums::VaultLinkedService;
 use crate::error::{from_response, ScrapflyError};
 
 /// Configuration for a Cloud Browser WebSocket session (passed to
@@ -867,8 +868,8 @@ impl Client {
     // ------------------------------------------------------------------
 
     /// Link a vault to an external secret manager. `linked_service` is the
-    /// provider discriminator (`1password`), `token` its service-account
-    /// token, and `linked_service_data` the non-secret selection rules —
+    /// provider discriminator, `token` its service-account token, and
+    /// `linked_service_data` the non-secret selection rules —
     /// `vault_id` or `vault_name` is required, `sync_mode`
     /// (`manual`/`on_session`) and `sync_ttl_s` are optional:
     ///
@@ -888,7 +889,7 @@ impl Client {
         &self,
         vault_id: &str,
         vault_key: &str,
-        linked_service: &str,
+        linked_service: VaultLinkedService,
         token: &str,
         linked_service_data: serde_json::Value,
     ) -> Result<serde_json::Value, ScrapflyError> {
@@ -901,7 +902,7 @@ impl Client {
         let url = Url::parse(&url)
             .map_err(|e| ScrapflyError::Config(format!("invalid vault url: {}", e)))?;
         let body = serde_json::json!({
-            "linked_service": linked_service,
+            "linked_service": linked_service.as_str(),
             "token": token,
             "linked_service_data": strip_token_item_id(linked_service_data),
         });
@@ -1049,7 +1050,9 @@ impl Client {
     /// Probe the provider credentials and enumerate what the service
     /// account can reach: `vaults_visible`, `item_count`, `warnings`.
     ///
-    /// Both `linked_service` and `token` are optional. Passing a `token`
+    /// Both `linked_service` and `token` are optional; the server defaults an
+    /// absent discriminator to [`VaultLinkedService::OnePassword`], so this is
+    /// the only call taking it as an `Option`. Passing a `token`
     /// probes a vault that is not linked yet, which is how an upstream
     /// vault is chosen before committing to a link; `None` for both probes
     /// the token already sealed in the vault and therefore requires the
@@ -1062,7 +1065,7 @@ impl Client {
         &self,
         vault_id: &str,
         vault_key: &str,
-        linked_service: Option<&str>,
+        linked_service: Option<VaultLinkedService>,
         token: Option<&str>,
     ) -> Result<serde_json::Value, ScrapflyError> {
         let url = format!(
@@ -1081,7 +1084,10 @@ impl Client {
         );
         let mut body_map = serde_json::Map::new();
         if let Some(s) = linked_service {
-            body_map.insert("linked_service".into(), serde_json::Value::String(s.into()));
+            body_map.insert(
+                "linked_service".into(),
+                serde_json::Value::String(s.as_str().into()),
+            );
         }
         if let Some(t) = token {
             body_map.insert("token".into(), serde_json::Value::String(t.into()));

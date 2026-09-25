@@ -7,6 +7,7 @@ use scrapfly_sdk::{
     BrowserConfig, Client, CrawlRefreshSettings, CrawlSearchOptions, CrawlerConfig,
     CrawlerPromptDone, CrawlerPromptEvent, CrawlerRefreshState, CrawlerSearchMode,
     CrawlerSearchResponse, CrawlerStatus, CrawlerWebhook, CrawlerWebhookEvent, ScrapflyError,
+    VaultLinkedService,
 };
 
 #[test]
@@ -2616,4 +2617,19 @@ fn unblocker_named_predicate_matches_the_asp_bypass_variant() {
         false,
     );
     assert!(!proxy_failure.is_unblocker_failure());
+}
+
+#[test]
+fn vault_linked_service_round_trips_as_1password() {
+    // The variant name cannot spell the wire value, so the discriminator rides
+    // on a per-variant serde rename; as_str() must agree with it or the link
+    // and probe bodies would disagree on the provider.
+    assert_eq!(VaultLinkedService::OnePassword.as_str(), "1password");
+    assert_eq!(
+        serde_json::to_value(VaultLinkedService::OnePassword).expect("serializable"),
+        serde_json::json!("1password")
+    );
+    let service: VaultLinkedService = serde_json::from_str("\"1password\"").expect("known service");
+    assert_eq!(service, VaultLinkedService::OnePassword);
+    serde_json::from_str::<VaultLinkedService>("\"bitwarden\"").expect_err("unregistered service");
 }
