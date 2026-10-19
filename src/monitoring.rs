@@ -144,7 +144,8 @@ impl MonitoringTargetMetricsOptions {
 pub struct CloudBrowserMonitoringOptions {
     /// Pre-defined window. Ignored if `start`/`end` are provided.
     pub period: Option<MonitoringPeriod>,
-    /// Optional filter to a single proxy pool (e.g. `public_datacenter_pool`).
+    /// Optional filter to a single Cloud Browser pool, as its runs record it:
+    /// `datacenter`, `residential`, `tor` or `byop`.
     pub proxy_pool: Option<String>,
     /// Custom window start (UTC, `YYYY-MM-DD HH:MM:SS`). Must be set with `end`.
     pub start: Option<String>,

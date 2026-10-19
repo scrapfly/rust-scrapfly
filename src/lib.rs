@@ -15,23 +15,37 @@
 //! # Ok(()) }
 //! ```
 //!
-//! ## Unblocker
+//! ## Proxy pools
 //!
-//! The anti-bot bypass is turned on with `unblocker`, on both
-//! [`ScrapeConfig`] and [`CrawlerConfig`]:
+//! The anti-bot bypass comes with the proxy pool, on [`ScrapeConfig`],
+//! [`CrawlerConfig`] and [`ScreenshotConfig`]: [`ProxyPool::Basic`]
+//! (datacenter, Unblocker off), [`ProxyPool::Unblocker`] and
+//! [`ProxyPool::UnblockerUltra`] (residential, Unblocker on). The targets and
+//! anti-bot protections that have a price of their own accept
+//! [`ProxyPool::UnblockerUltra`] only, and refuse `basic` and `unblocker` with
+//! `ERR::PROXY::UNBLOCKER_ULTRA_REQUIRED` (HTTP 422, not billed).
+//! [`ProxyPool::Auto`] lets the API pick the pool before the request, from the
+//! target's profile: the Unblocker on datacenter proxies, or the pool the
+//! target needs. It is accepted on every target, the ones that require
+//! [`ProxyPool::UnblockerUltra`] included, where their price is added, and is
+//! priced as the pool it runs on.
 //!
 //! ```no_run
-//! # use scrapfly_sdk::ScrapeConfig;
+//! # use scrapfly_sdk::{ProxyPool, ScrapeConfig};
 //! # fn run() -> Result<(), scrapfly_sdk::ScrapflyError> {
 //! let cfg = ScrapeConfig::builder("https://example.com")
-//!     .unblocker(true)
+//!     .proxy_pool(ProxyPool::Unblocker)
 //!     .build()?;
 //! # Ok(()) }
 //! ```
 //!
-//! `asp` is the previous name. Its builder methods are deprecated aliases
-//! that keep working; when both names are supplied `asp` wins, in either call
-//! order, and the two are never OR-ed. On the built structs the value lives in
+//! The `unblocker` toggle is deprecated: use the proxy pool
+//! ([`ProxyPool::UnblockerUltra`] for the Unblocker). The migration guide
+//! covers requests written before the proxy pools:
+//! <https://scrapfly.io/new-pricing#legacy-spellings>. `asp` is the
+//! toggle's previous name. Its builder methods are deprecated aliases; when
+//! both names are supplied `asp` wins, in either call order, and the two are
+//! never OR-ed. On the built structs the value lives in
 //! a single field still called `asp` (renaming a public field would break
 //! existing callers); `unblocker_enabled()` reads it and `set_unblocker()`
 //! writes it. The request still carries the parameter as `asp` on the wire —

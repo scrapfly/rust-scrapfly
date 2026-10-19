@@ -1,6 +1,6 @@
 //! Screenshot endpoint configuration — ported from `sdk/go/config_screenshot.go`.
 
-use crate::enums::{ScreenshotFormat, ScreenshotOption, VisionDeficiencyType};
+use crate::enums::{ProxyPool, ScreenshotFormat, ScreenshotOption, VisionDeficiencyType};
 use crate::error::ScrapflyError;
 
 use super::url_safe_b64_encode;
@@ -40,6 +40,13 @@ pub struct ScreenshotConfig {
     pub webhook: Option<String>,
     /// Simulated vision deficiency.
     pub vision_deficiency: Option<VisionDeficiencyType>,
+    /// Proxy pool: [`ProxyPool::Basic`], [`ProxyPool::Unblocker`],
+    /// [`ProxyPool::UnblockerUltra`] or [`ProxyPool::Auto`]. The Screenshot API
+    /// takes these four only and ignores any other value. `None` sends no
+    /// `proxy_pool` and
+    /// the API's screenshot defaults apply. The screenshot price is the same
+    /// on every pool, and a screenshot is never retried.
+    pub proxy_pool: Option<ProxyPool>,
 }
 
 impl ScreenshotConfig {
@@ -110,6 +117,9 @@ impl ScreenshotConfig {
         }
         if let Some(vd) = self.vision_deficiency {
             out.push(("vision_deficiency".into(), vd.as_str().into()));
+        }
+        if let Some(p) = self.proxy_pool {
+            out.push(("proxy_pool".into(), p.as_str().into()));
         }
         Ok(out)
     }
@@ -195,6 +205,11 @@ impl ScreenshotConfigBuilder {
     /// Set vision deficiency simulation.
     pub fn vision_deficiency(mut self, v: VisionDeficiencyType) -> Self {
         self.cfg.vision_deficiency = Some(v);
+        self
+    }
+    /// Set the proxy pool (`basic`, `unblocker`, `unblocker_ultra` or `auto`).
+    pub fn proxy_pool(mut self, p: ProxyPool) -> Self {
+        self.cfg.proxy_pool = Some(p);
         self
     }
     /// Finalize the builder.

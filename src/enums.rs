@@ -112,13 +112,43 @@ impl ExtractionModel {
     }
 }
 
-/// Proxy pool catalog.
+/// The `proxy_pool` parameter of the Web Scraping API, the Crawler and the
+/// Screenshot API: [`ProxyPool::Basic`], [`ProxyPool::Unblocker`],
+/// [`ProxyPool::UnblockerUltra`] or [`ProxyPool::Auto`]. Each sets both the
+/// proxies and the Unblocker. The Screenshot API ignores any other value.
+/// Cloud Browser has pools of its own (see
+/// [`BrowserConfig`](crate::BrowserConfig)).
+///
+/// The pool names written before the proxy pools
+/// ([`ProxyPool::PublicDatacenterPool`], [`ProxyPool::PublicResidentialPool`],
+/// [`ProxyPool::PublicTorPool`]) are still accepted. The migration guide
+/// covers them: <https://scrapfly.io/new-pricing#legacy-spellings>
+///
+/// Non-exhaustive: the API grows this list, and a new member must not break
+/// a downstream `match`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ProxyPool {
-    /// Data-center proxies (cheaper, faster, easier to detect).
+    /// `basic`: datacenter proxies, Unblocker off.
+    Basic,
+    /// `unblocker`: residential proxies with the Unblocker (anti-bot bypass)
+    /// on.
+    Unblocker,
+    /// `unblocker_ultra`: residential proxies with the Unblocker on. The only
+    /// pool accepted by the targets and anti-bot protections that have a
+    /// price of their own: those refuse `basic` and `unblocker` with
+    /// `ERR::PROXY::UNBLOCKER_ULTRA_REQUIRED` (HTTP 422, not billed).
+    UnblockerUltra,
+    /// `auto`: the API picks the pool before the request, from the target's
+    /// profile: the Unblocker on datacenter proxies, or the pool the target
+    /// needs. Accepted on every target, the ones that require
+    /// [`ProxyPool::UnblockerUltra`] included, where their price is added;
+    /// priced as the pool it runs on.
+    Auto,
+    /// Former name of the datacenter pool.
     PublicDatacenterPool,
-    /// Residential proxies (more expensive, harder to detect).
+    /// Former name of the residential pool.
     PublicResidentialPool,
     /// Tor network egress for .onion hidden services and OSINT.
     PublicTorPool,
@@ -128,10 +158,31 @@ impl ProxyPool {
     /// Wire-format string.
     pub fn as_str(&self) -> &'static str {
         match self {
+            Self::Basic => "basic",
+            Self::Unblocker => "unblocker",
+            Self::UnblockerUltra => "unblocker_ultra",
+            Self::Auto => "auto",
             Self::PublicDatacenterPool => "public_datacenter_pool",
             Self::PublicResidentialPool => "public_residential_pool",
             Self::PublicTorPool => "public_tor_pool",
         }
+    }
+
+    /// Whether this is one of the pool names written before the proxy pools
+    /// ([`ProxyPool::PublicDatacenterPool`], [`ProxyPool::PublicResidentialPool`],
+    /// [`ProxyPool::PublicTorPool`]).
+    pub fn is_legacy(&self) -> bool {
+        matches!(
+            self,
+            Self::PublicDatacenterPool | Self::PublicResidentialPool | Self::PublicTorPool
+        )
+    }
+}
+
+/// Lets the crawler builder, which takes the pool as a string, accept a `ProxyPool`.
+impl From<ProxyPool> for String {
+    fn from(p: ProxyPool) -> Self {
+        p.as_str().to_owned()
     }
 }
 
