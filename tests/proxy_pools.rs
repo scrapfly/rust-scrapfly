@@ -12,11 +12,13 @@ const POOLS: [(ProxyPool, &str); 4] = [
     (ProxyPool::Auto, "auto"),
 ];
 
-const LEGACY: [(ProxyPool, &str); 3] = [
+const LEGACY: [(ProxyPool, &str); 2] = [
     (ProxyPool::PublicDatacenterPool, "public_datacenter_pool"),
     (ProxyPool::PublicResidentialPool, "public_residential_pool"),
-    (ProxyPool::PublicTorPool, "public_tor_pool"),
 ];
+
+/// The Tor pool is a current pool, not a name written before the proxy pools.
+const TOR: (ProxyPool, &str) = (ProxyPool::PublicTorPool, "public_tor_pool");
 
 fn value<'a>(pairs: &'a [(String, String)], key: &str) -> Option<&'a str> {
     pairs
@@ -27,7 +29,7 @@ fn value<'a>(pairs: &'a [(String, String)], key: &str) -> Option<&'a str> {
 
 #[test]
 fn pool_wire_values_and_serde_agree() {
-    for (pool, wire) in POOLS.iter().chain(LEGACY.iter()) {
+    for (pool, wire) in POOLS.iter().chain(LEGACY.iter()).chain([TOR].iter()) {
         assert_eq!(pool.as_str(), *wire);
         assert_eq!(serde_json::to_value(pool).unwrap(), serde_json::json!(wire));
         let parsed: ProxyPool = serde_json::from_value(serde_json::json!(wire)).unwrap();
@@ -43,6 +45,7 @@ fn is_legacy_separates_legacy_names_from_the_new_pools() {
     for (pool, _) in LEGACY {
         assert!(pool.is_legacy(), "{pool:?} is a legacy pool name");
     }
+    assert!(!TOR.0.is_legacy(), "the Tor pool is a current pool");
 }
 
 #[test]

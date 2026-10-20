@@ -114,15 +114,16 @@ impl ExtractionModel {
 
 /// The `proxy_pool` parameter of the Web Scraping API, the Crawler and the
 /// Screenshot API: [`ProxyPool::Basic`], [`ProxyPool::Unblocker`],
-/// [`ProxyPool::UnblockerUltra`] or [`ProxyPool::Auto`]. Each sets both the
-/// proxies and the Unblocker. The Screenshot API ignores any other value.
-/// Cloud Browser has pools of its own (see
+/// [`ProxyPool::UnblockerUltra`] or [`ProxyPool::Auto`], each of which sets
+/// both the proxies and the Unblocker, or [`ProxyPool::PublicTorPool`], the
+/// Tor network. The Screenshot API takes the first four and ignores any other
+/// value. Cloud Browser has pools of its own (see
 /// [`BrowserConfig`](crate::BrowserConfig)).
 ///
 /// The pool names written before the proxy pools
-/// ([`ProxyPool::PublicDatacenterPool`], [`ProxyPool::PublicResidentialPool`],
-/// [`ProxyPool::PublicTorPool`]) are still accepted. The migration guide
-/// covers them: <https://scrapfly.io/new-pricing#legacy-spellings>
+/// ([`ProxyPool::PublicDatacenterPool`], [`ProxyPool::PublicResidentialPool`])
+/// are still accepted. The migration guide covers them:
+/// <https://scrapfly.io/new-pricing#legacy-spellings>
 ///
 /// Non-exhaustive: the API grows this list, and a new member must not break
 /// a downstream `match`.
@@ -150,7 +151,8 @@ pub enum ProxyPool {
     PublicDatacenterPool,
     /// Former name of the residential pool.
     PublicResidentialPool,
-    /// Tor network egress for .onion hidden services and OSINT.
+    /// `public_tor_pool`: egress through the Tor network, the only pool that
+    /// reaches .onion hidden services; also used for OSINT.
     PublicTorPool,
 }
 
@@ -169,12 +171,12 @@ impl ProxyPool {
     }
 
     /// Whether this is one of the pool names written before the proxy pools
-    /// ([`ProxyPool::PublicDatacenterPool`], [`ProxyPool::PublicResidentialPool`],
-    /// [`ProxyPool::PublicTorPool`]).
+    /// ([`ProxyPool::PublicDatacenterPool`], [`ProxyPool::PublicResidentialPool`]).
+    /// [`ProxyPool::PublicTorPool`] is not one: the Tor pool keeps its name.
     pub fn is_legacy(&self) -> bool {
         matches!(
             self,
-            Self::PublicDatacenterPool | Self::PublicResidentialPool | Self::PublicTorPool
+            Self::PublicDatacenterPool | Self::PublicResidentialPool
         )
     }
 }
