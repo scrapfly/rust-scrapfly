@@ -38,7 +38,9 @@ const DEFAULT_CLOUD_BROWSER_HOST: &str = "https://browser.scrapfly.io";
 const SDK_USER_AGENT: &str = "Scrapfly-Rust-SDK";
 const DEFAULT_RETRIES: usize = 3;
 const DEFAULT_RETRY_DELAY: Duration = Duration::from_secs(1);
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(150);
+/// The Scrape API holds a request up to 155s and asks clients to read that
+/// long; 160s leaves a margin, as the Python SDK does.
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(160);
 /// Deadline for the `/crawl/prompt` SSE exchange. It has to clear the API's
 /// own 165s ceiling (retrieval plus up to 150s of generation), which
 /// [`DEFAULT_TIMEOUT`] does not.
@@ -98,7 +100,7 @@ impl ClientBuilder {
         self.cloud_browser_host = Some(host.into());
         self
     }
-    /// Override the HTTP timeout (default 150s).
+    /// Override the HTTP timeout (default 160s).
     pub fn timeout(mut self, t: Duration) -> Self {
         self.timeout = Some(t);
         self
@@ -1568,6 +1570,13 @@ impl Client {
                     return Ok(resp);
                 }
                 Err(e) => {
+                    // A deadline hit after the request reached the API is not
+                    // retried: the API cancels a scrape whose client went away
+                    // (ERR::SCRAPE::CLIENT_DISCONNECTED, not billed), so a retry
+                    // would start it over and wait out the deadline again.
+                    if e.is_timeout() && !e.is_connect() {
+                        return Err(ScrapflyError::Transport(e));
+                    }
                     last_err = Some(ScrapflyError::Transport(e));
                     if attempt + 1 < DEFAULT_RETRIES {
                         tokio::time::sleep(DEFAULT_RETRY_DELAY).await;
@@ -1605,7 +1614,7 @@ impl Client {
     /// Single-shot send, no retry (for `verify_api_key`/`account` style calls).
     /// Send the prompt request with a deadline that outlives the server's own
     /// budget. `reqwest`'s client timeout covers the response body, so the
-    /// 150s default would cut a legitimate SSE stream mid-answer: the API
+    /// 160s default would cut a legitimate SSE stream mid-answer: the API
     /// allows retrieval plus up to 150s of generation under a 165s ceiling.
     /// The per-request override leaves every other call's deadline alone.
     async fn send_prompt_stream(
@@ -2007,5 +2016,83 @@ fn infer_format_from_content_type(ct: &str) -> String {
         "text/plain" => "text".into(),
         "application/json" => "json".into(),
         _ => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    /// Accepts every connection and counts it; `reply` is written after the
+    /// request is read, or nothing when it is `None` (the request hangs).
+    async fn serve(reply: Option<&'static [u8]>) -> (String, Arc<AtomicUsize>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let counter = hits.clone();
+        tokio::spawn(async move {
+            loop {
+                let (mut sock, _) = listener.accept().await.unwrap();
+                counter.fetch_add(1, Ordering::SeqCst);
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let _ = sock.read(&mut buf).await;
+                    match reply {
+                        Some(bytes) => {
+                            let _ = sock.write_all(bytes).await;
+                        }
+                        None => tokio::time::sleep(Duration::from_secs(30)).await,
+                    }
+                });
+            }
+        });
+        (format!("http://{addr}"), hits)
+    }
+
+    fn client(host: &str, timeout: Duration) -> Client {
+        Client::builder()
+            .api_key("key")
+            .host(host)
+            .timeout(timeout)
+            .build()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_timed_out_request_is_sent_once() {
+        let (host, hits) = serve(None).await;
+        let c = client(&host, Duration::from_millis(100));
+        let url = Url::parse(&format!("{host}/scrape")).unwrap();
+        let err = c
+            .send_with_retry(Method::GET, url, None, None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ScrapflyError::Transport(ref e) if e.is_timeout()));
+        assert_eq!(hits.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn a_server_error_is_retried() {
+        let (host, hits) = serve(Some(
+            b"HTTP/1.1 502 Bad Gateway\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+        ))
+        .await;
+        let c = client(&host, Duration::from_secs(5));
+        let url = Url::parse(&format!("{host}/scrape")).unwrap();
+        let resp = c
+            .send_with_retry(Method::GET, url, None, None)
+            .await
+            .unwrap();
+        assert_eq!(resp.status().as_u16(), 502);
+        assert_eq!(hits.load(Ordering::SeqCst), DEFAULT_RETRIES);
+    }
+
+    #[test]
+    fn the_default_timeout_covers_the_scrape_read_timeout() {
+        assert!(DEFAULT_TIMEOUT >= Duration::from_secs(155));
     }
 }

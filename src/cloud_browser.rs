@@ -1017,7 +1017,7 @@ impl Client {
     /// `imported`, `updated`, `deleted`, `skipped`, `unmirrored`,
     /// `status`, `warnings`.
     ///
-    /// The server's own budget is 25 s, inside the client's 150 s default
+    /// The server's own budget is 25 s, inside the client's 160 s default
     /// timeout; a [`crate::client::ClientBuilder::timeout`] set below that
     /// budget cuts the call off before the server can answer.
     pub async fn cloud_browser_vault_service_sync(
@@ -1061,7 +1061,7 @@ impl Client {
     /// the token already sealed in the vault and therefore requires the
     /// vault to be linked. Nothing is persisted either way.
     ///
-    /// The server's own budget is 10 s, inside the client's 150 s default
+    /// The server's own budget is 10 s, inside the client's 160 s default
     /// timeout; a [`crate::client::ClientBuilder::timeout`] set below that
     /// budget cuts the call off before the server can answer.
     pub async fn cloud_browser_vault_service_test(
