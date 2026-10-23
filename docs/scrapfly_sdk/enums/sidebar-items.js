@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["CompressionFormat","CrawlerContentFormat","CrawlerWebhookEvent","ExtractionModel","Format","FormatOption","HttpMethod","ProxyPool","ScreenshotFlag","ScreenshotFormat","ScreenshotOption","VisionDeficiencyType"]};
+window.SIDEBAR_ITEMS = {"enum":["CompressionFormat","CrawlerContentFormat","CrawlerWebhookEvent","ExtractionModel","Format","FormatOption","HttpMethod","ProxyPool","ScreenshotFlag","ScreenshotFormat","ScreenshotOption","VaultLinkedService","VisionDeficiencyType"]};
