@@ -139,7 +139,7 @@ impl ClientBuilder {
             if self.danger_accept_invalid_certs {
                 builder = builder.danger_accept_invalid_certs(true);
             }
-            builder.build().map_err(ScrapflyError::Transport)?
+            builder.build().map_err(ScrapflyError::from)?
         };
 
         Ok(Client {
@@ -1714,9 +1714,9 @@ impl Client {
                     // (ERR::SCRAPE::CLIENT_DISCONNECTED, not billed), so a retry
                     // would start it over and wait out the deadline again.
                     if e.is_timeout() && !e.is_connect() {
-                        return Err(ScrapflyError::Transport(e));
+                        return Err(ScrapflyError::from(e));
                     }
-                    last_err = Some(ScrapflyError::Transport(e));
+                    last_err = Some(ScrapflyError::from(e));
                     if attempt + 1 < DEFAULT_RETRIES {
                         tokio::time::sleep(DEFAULT_RETRY_DELAY).await;
                         continue;
@@ -1747,7 +1747,7 @@ impl Client {
         if let Some(b) = body {
             req = req.body(b);
         }
-        req.send().await.map_err(ScrapflyError::Transport)
+        req.send().await.map_err(ScrapflyError::from)
     }
 
     /// Single-shot send, no retry (for `verify_api_key`/`account` style calls).
@@ -1776,7 +1776,7 @@ impl Client {
             .timeout(CRAWL_PROMPT_STREAM_TIMEOUT)
             .send()
             .await
-            .map_err(ScrapflyError::Transport)
+            .map_err(ScrapflyError::from)
     }
 
     async fn send_simple(
@@ -1798,7 +1798,7 @@ impl Client {
         if let Some(b) = body {
             req = req.body(b);
         }
-        req.send().await.map_err(ScrapflyError::Transport)
+        req.send().await.map_err(ScrapflyError::from)
     }
 }
 
@@ -1807,7 +1807,7 @@ impl Client {
 async fn read_response(resp: Response) -> Result<(u16, HeaderMap, bytes::Bytes), ScrapflyError> {
     let status = resp.status().as_u16();
     let headers = resp.headers().clone();
-    let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+    let body = resp.bytes().await.map_err(ScrapflyError::from)?;
     let _ = parse_retry_after(headers.get("retry-after").and_then(|v| v.to_str().ok()));
     Ok((status, headers, body))
 }
@@ -2073,7 +2073,7 @@ fn crawler_prompt_stream(
                 }
                 Some(Err(e)) => {
                     st.finished = true;
-                    st.pending.push_back(Err(ScrapflyError::Transport(e)));
+                    st.pending.push_back(Err(ScrapflyError::from(e)));
                 }
                 None => {
                     st.finished = true;

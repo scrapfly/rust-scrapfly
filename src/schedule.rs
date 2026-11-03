@@ -439,7 +439,7 @@ impl Client {
             .send_simple_public(method, url, Some(headers), body)
             .await?;
         let status = resp.status().as_u16();
-        let bytes = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let bytes = resp.bytes().await.map_err(ScrapflyError::from)?;
         Ok((status, bytes))
     }
 }

@@ -49,9 +49,10 @@ impl std::fmt::Display for ApiError {
 /// All errors raised by `scrapfly-sdk`.
 #[derive(Debug, Error)]
 pub enum ScrapflyError {
-    /// Transport-level failure (connect, TLS, timeout …).
+    /// Transport-level failure (connect, TLS, timeout …). The request URL it
+    /// prints carries `key=REDACTED` in place of the API key.
     #[error("transport: {0}")]
-    Transport(#[from] reqwest::Error),
+    Transport(reqwest::Error),
     /// JSON (de)serialization failure.
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),
@@ -167,6 +168,37 @@ impl ScrapflyError {
     pub fn is_unblocker_failure(&self) -> bool {
         matches!(self, ScrapflyError::AspBypassFailed(_))
     }
+}
+
+impl From<reqwest::Error> for ScrapflyError {
+    fn from(err: reqwest::Error) -> Self {
+        ScrapflyError::Transport(without_key(err))
+    }
+}
+
+/// Mask the API key in the URL a reqwest error prints: the key rides in the
+/// query of every request.
+fn without_key(err: reqwest::Error) -> reqwest::Error {
+    let Some(url) = err.url() else {
+        return err;
+    };
+    if !url.query_pairs().any(|(name, _)| name == "key") {
+        return err;
+    }
+    let mut masked = url.clone();
+    let pairs: Vec<(String, String)> = url
+        .query_pairs()
+        .map(|(name, value)| {
+            let value = if name == "key" {
+                "REDACTED".to_string()
+            } else {
+                value.into_owned()
+            };
+            (name.into_owned(), value)
+        })
+        .collect();
+    masked.query_pairs_mut().clear().extend_pairs(pairs);
+    err.with_url(masked)
 }
 
 #[derive(Debug, Deserialize, Default)]

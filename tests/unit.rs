@@ -2828,3 +2828,22 @@ fn vault_linked_service_round_trips_as_1password() {
     assert_eq!(service, VaultLinkedService::OnePassword);
     serde_json::from_str::<VaultLinkedService>("\"bitwarden\"").expect_err("unregistered service");
 }
+
+#[tokio::test]
+async fn a_transport_error_does_not_print_the_key() {
+    let client = Client::builder()
+        .api_key("scp-live-0123456789abcdef")
+        .host("http://127.0.0.1:1")
+        .build()
+        .expect("client");
+
+    let err = client
+        .account()
+        .await
+        .expect_err("nothing listens on port 1");
+    let shown = format!("{err} {err:?}");
+
+    assert!(matches!(err, ScrapflyError::Transport(_)), "{shown}");
+    assert!(!shown.contains("0123456789abcdef"), "{shown}");
+    assert!(shown.contains("key=REDACTED"), "{shown}");
+}

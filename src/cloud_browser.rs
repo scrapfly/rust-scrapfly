@@ -410,7 +410,7 @@ impl Client {
             .send_with_retry(Method::POST, url, Some(headers), Some(body))
             .await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -428,7 +428,7 @@ impl Client {
             .map_err(|e| ScrapflyError::Config(format!("invalid extension url: {}", e)))?;
         let resp = self.send_with_retry(Method::GET, url, None, None).await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -450,7 +450,7 @@ impl Client {
             .map_err(|e| ScrapflyError::Config(format!("invalid extension url: {}", e)))?;
         let resp = self.send_with_retry(Method::GET, url, None, None).await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -506,7 +506,7 @@ impl Client {
             .send_with_retry(Method::POST, url, Some(headers), Some(body))
             .await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 && status != 201 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -530,7 +530,7 @@ impl Client {
             .send_with_retry(Method::DELETE, url, None, None)
             .await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -575,7 +575,7 @@ impl Client {
             .send_with_retry(Method::POST, url, Some(headers), Some(body_bytes))
             .await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 && status != 201 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -593,7 +593,7 @@ impl Client {
             .map_err(|e| ScrapflyError::Config(format!("invalid vault url: {}", e)))?;
         let resp = self.send_with_retry(Method::GET, url, None, None).await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -615,7 +615,7 @@ impl Client {
             .map_err(|e| ScrapflyError::Config(format!("invalid vault url: {}", e)))?;
         let resp = self.send_with_retry(Method::GET, url, None, None).await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -652,7 +652,7 @@ impl Client {
             .send_with_retry(Method::PATCH, url, Some(headers), Some(body_bytes))
             .await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -676,7 +676,7 @@ impl Client {
             .send_with_retry(Method::DELETE, url, None, None)
             .await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -712,7 +712,7 @@ impl Client {
             .send_with_retry(Method::POST, url, Some(headers), None)
             .await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -736,7 +736,7 @@ impl Client {
             .map_err(|e| ScrapflyError::Config(format!("invalid vault url: {}", e)))?;
         let resp = self.send_with_retry(Method::GET, url, None, None).await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -784,7 +784,7 @@ impl Client {
             .send_with_retry(Method::POST, url, Some(headers), Some(body_bytes))
             .await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 && status != 201 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -828,7 +828,7 @@ impl Client {
             .send_with_retry(Method::PATCH, url, Some(headers), Some(body_bytes))
             .await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -854,7 +854,7 @@ impl Client {
             .send_with_retry(Method::DELETE, url, None, None)
             .await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -921,7 +921,7 @@ impl Client {
             .send_with_retry(Method::POST, url, Some(headers), Some(body_bytes))
             .await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -973,7 +973,7 @@ impl Client {
             .send_with_retry(Method::PATCH, url, Some(headers), Some(body_bytes))
             .await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -1005,7 +1005,7 @@ impl Client {
             .send_with_retry(Method::DELETE, url, None, None)
             .await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -1043,7 +1043,7 @@ impl Client {
             .send_with_retry(Method::POST, url, Some(headers), None)
             .await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -1107,7 +1107,7 @@ impl Client {
             .send_with_retry(Method::POST, url, Some(headers), body_bytes)
             .await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -1131,7 +1131,7 @@ impl Client {
             .map_err(|e| ScrapflyError::Config(format!("invalid playback url: {}", e)))?;
         let resp = self.send_with_retry(Method::GET, url, None, None).await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -1190,7 +1190,7 @@ impl Client {
         let resp = self.send_with_retry(Method::POST, url, None, None).await?;
         let status = resp.status().as_u16();
         if status != 200 {
-            let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+            let body = resp.bytes().await.map_err(ScrapflyError::from)?;
             return Err(from_response(status, &body, 0, false));
         }
         Ok(())
@@ -1207,7 +1207,7 @@ impl Client {
             .map_err(|e| ScrapflyError::Config(format!("invalid sessions url: {}", e)))?;
         let resp = self.send_with_retry(Method::GET, url, None, None).await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
@@ -1226,7 +1226,7 @@ impl Client {
             .map_err(|e| ScrapflyError::Config(format!("invalid video url: {}", e)))?;
         let resp = self.send_with_retry(Method::GET, url, None, None).await?;
         let status = resp.status().as_u16();
-        let body = resp.bytes().await.map_err(ScrapflyError::Transport)?;
+        let body = resp.bytes().await.map_err(ScrapflyError::from)?;
         if status != 200 {
             return Err(from_response(status, &body, 0, false));
         }
