@@ -4,8 +4,8 @@ use scrapfly_sdk::config::crawler::{REFRESH_MAX_INTERVAL, REFRESH_MIN_INTERVAL};
 use scrapfly_sdk::config::scrape::ScrapeConfig;
 use scrapfly_sdk::result::crawler::CrawlerUrls;
 use scrapfly_sdk::{
-    BrowserConfig, Client, CrawlRefreshSettings, CrawlSearchOptions, CrawlerConfig,
-    CrawlerPromptDone, CrawlerPromptEvent, CrawlerRefreshState, CrawlerSearchMode,
+    BrowserConfig, Client, CrawlPromptOptions, CrawlRefreshSettings, CrawlSearchOptions,
+    CrawlerConfig, CrawlerPromptDone, CrawlerPromptEvent, CrawlerRefreshState, CrawlerSearchMode,
     CrawlerSearchResponse, CrawlerStatus, CrawlerWebhook, CrawlerWebhookEvent, ScrapflyError,
     VaultLinkedService,
 };
@@ -1097,6 +1097,201 @@ fn crawler_prompt_done_tolerates_a_null_citation_list() {
     // must not cost the caller the rest of the frame.
     assert_eq!(done.sources_dropped, 0);
     assert!(!done.truncated);
+}
+
+/// Body of the captured request, after the header block.
+fn captured_json_body(raw: &str) -> serde_json::Value {
+    let (_, body) = raw.split_once("\r\n\r\n").expect("header block");
+    serde_json::from_str(body).expect("json body")
+}
+
+#[tokio::test]
+async fn crawl_prompt_answer_asks_for_one_json_object() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let server = tokio::spawn(capture_one_request(
+        listener,
+        r#"{"prompt":"Which product is cheapest?","answer":"The Box of Chocolate Candy [1].",
+            "sources":[{"id":1,"crawler_uuid":"abc","url":"https://web-scraping.dev/product/1","title":"Box","score":0.9}],
+            "sources_used":[1],"sources_dropped":0,"truncated":false,
+            "search":{"completeness":"exact","crawls_requested":1,"crawls_searched":1,"crawls_pruned_exact":0,"skipped":null},
+            "api_credit":5}"#,
+    ));
+    let client = Client::builder()
+        .api_key("scp-live-key")
+        .host(format!("http://127.0.0.1:{}", port))
+        .build()
+        .expect("client");
+
+    let opts = CrawlPromptOptions {
+        search: Some(CrawlSearchOptions {
+            limit: Some(5),
+            ..Default::default()
+        }),
+        model: None,
+    };
+    let answer = client
+        .crawl_prompt_answer("abc", "Which product is cheapest?", Some(&opts))
+        .await
+        .expect("answer");
+
+    let raw = server.await.expect("server");
+    assert!(raw.starts_with("POST /crawl/prompt?"), "raw: {raw}");
+    assert!(
+        raw.to_ascii_lowercase()
+            .contains("accept: application/json"),
+        "raw: {raw}"
+    );
+    let body = captured_json_body(&raw);
+    assert_eq!(body["generation"], serde_json::json!({"stream": false}));
+    assert_eq!(body["crawl_ids"], serde_json::json!(["abc"]));
+    assert_eq!(body["search"], serde_json::json!({"limit": 5}));
+
+    assert_eq!(answer.answer, "The Box of Chocolate Candy [1].");
+    assert_eq!(answer.sources[0].url, "https://web-scraping.dev/product/1");
+    assert_eq!(answer.sources_used, vec![1]);
+    assert_eq!(answer.search.completeness, "exact");
+    assert!(answer.search.skipped.is_empty());
+    assert_eq!(answer.api_credit, Some(5));
+}
+
+#[tokio::test]
+async fn crawl_extract_sends_the_schema_and_decodes_data() {
+    #[derive(serde::Deserialize)]
+    struct Product {
+        name: String,
+        price: f64,
+    }
+    #[derive(serde::Deserialize)]
+    struct Products {
+        products: Vec<Product>,
+    }
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let server = tokio::spawn(capture_one_request(
+        listener,
+        r#"{"prompt":"Every product with its price","data":{"products":[{"name":"Box","price":24.99}]},
+            "sources":[],"sources_used":[],"sources_dropped":0,"truncated":false,
+            "search":{"completeness":"partial","crawls_requested":2,"crawls_searched":1,"crawls_pruned_exact":0,
+                      "skipped":[{"crawler_uuid":"def","reason":"search_not_ready","status":"BUILDING"}]}}"#,
+    ));
+    let client = Client::builder()
+        .api_key("scp-live-key")
+        .host(format!("http://127.0.0.1:{}", port))
+        .build()
+        .expect("client");
+
+    let schema = serde_json::json!({
+        "type": "object",
+        "properties": {"products": {"type": "array"}},
+        "required": ["products"],
+    });
+    let ids = vec!["abc".to_string(), "def".to_string()];
+    let res = client
+        .crawls_extract(&ids, "Every product with its price", &schema, None)
+        .await
+        .expect("extract");
+
+    let raw = server.await.expect("server");
+    assert!(raw.starts_with("POST /crawl/extract?"), "raw: {raw}");
+    let body = captured_json_body(&raw);
+    assert_eq!(body["schema"], schema);
+    assert_eq!(body["crawl_ids"], serde_json::json!(["abc", "def"]));
+    assert!(body.get("search").is_none(), "no override, no search block");
+    assert!(body.get("generation").is_none());
+
+    let out: Products = res.decode().expect("decode");
+    assert_eq!(out.products[0].name, "Box");
+    assert_eq!(out.products[0].price, 24.99);
+    assert_eq!(res.search.skipped[0].reason, "search_not_ready");
+}
+
+#[tokio::test]
+async fn crawl_extract_rejects_bad_input_before_any_request() {
+    let client = Client::builder()
+        .api_key("scp-live-key")
+        .host("http://127.0.0.1:1")
+        .build()
+        .expect("client");
+    let one = vec!["a".to_string()];
+    let schema = serde_json::json!({"type": "object"});
+
+    let err = client.crawls_extract(&[], "p", &schema, None).await.err();
+    assert!(matches!(err, Some(ScrapflyError::Config(_))));
+    let err = client.crawls_extract(&one, "", &schema, None).await.err();
+    assert!(matches!(err, Some(ScrapflyError::Config(_))));
+    for bad in [
+        serde_json::json!({}),
+        serde_json::json!([]),
+        serde_json::json!("x"),
+    ] {
+        let err = client.crawls_extract(&one, "p", &bad, None).await.err();
+        assert!(matches!(err, Some(ScrapflyError::Config(_))), "{bad}");
+    }
+    let err = client.crawl_extract("", "p", &schema, None).await.err();
+    assert!(matches!(err, Some(ScrapflyError::Config(_))));
+
+    let err = client.crawls_prompt_answer(&[], "p", None).await.err();
+    assert!(matches!(err, Some(ScrapflyError::Config(_))));
+    let err = client.crawls_prompt_answer(&one, "", None).await.err();
+    assert!(matches!(err, Some(ScrapflyError::Config(_))));
+
+    // The search block of a prompt or an extraction has no cursor.
+    let paged = CrawlSearchOptions {
+        cursor: Some("next".into()),
+        ..Default::default()
+    };
+    let opts = scrapfly_sdk::CrawlExtractOptions {
+        search: Some(paged.clone()),
+    };
+    let err = client
+        .crawls_extract(&one, "p", &schema, Some(&opts))
+        .await
+        .err();
+    assert!(matches!(err, Some(ScrapflyError::Config(_))));
+    let opts = CrawlPromptOptions {
+        search: Some(paged),
+        model: None,
+    };
+    let err = client
+        .crawls_prompt_answer(&one, "p", Some(&opts))
+        .await
+        .err();
+    assert!(matches!(err, Some(ScrapflyError::Config(_))));
+    let err = client.crawls_prompt(&one, "p", Some(&opts)).await.err();
+    assert!(matches!(err, Some(ScrapflyError::Config(_))));
+
+    // A valid request gets past validation and fails on transport.
+    let err = client.crawls_extract(&one, "p", &schema, None).await.err();
+    assert!(!matches!(err, Some(ScrapflyError::Config(_))));
+}
+
+#[test]
+fn crawler_engine_failure_keeps_its_message_and_code() {
+    // The engine relays its failures as {error: message, code}; the schedule
+    // API puts the code under `error`. Both must decode.
+    let engine = br#"{"error": "the model returned no text", "code": "ERR::CRAWLER::PROMPT_GENERATION_FAILED"}"#;
+    match scrapfly_sdk::error::from_response(500, engine, 0, true) {
+        ScrapflyError::CrawlerFailed(api) => {
+            assert_eq!(api.message, "the model returned no text");
+            assert_eq!(api.code, "ERR::CRAWLER::PROMPT_GENERATION_FAILED");
+        }
+        other => panic!("expected CrawlerFailed, got {other:?}"),
+    }
+
+    let schedule = br#"{"error": "ERR::SCHEDULER::NOT_FOUND", "message": "no such schedule"}"#;
+    match scrapfly_sdk::error::from_response(404, schedule, 0, false) {
+        ScrapflyError::ScheduleFailed(api) => {
+            assert_eq!(api.code, "ERR::SCHEDULER::NOT_FOUND");
+            assert_eq!(api.message, "no such schedule");
+        }
+        other => panic!("expected ScheduleFailed, got {other:?}"),
+    }
 }
 
 /// A `crawler_updated` delivery as the webhook sender emits it.

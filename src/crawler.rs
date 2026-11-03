@@ -4,13 +4,16 @@ use std::time::{Duration, Instant};
 
 use futures_util::stream::Stream;
 
-use crate::client::{Client, CrawlPromptOptions, CrawlRefreshSettings, CrawlSearchOptions};
+use crate::client::{
+    Client, CrawlExtractOptions, CrawlPromptOptions, CrawlRefreshSettings, CrawlSearchOptions,
+};
 use crate::config::crawler::CrawlerConfig;
 use crate::enums::CrawlerContentFormat;
 use crate::error::ScrapflyError;
 use crate::result::crawler::{
-    CrawlContent, CrawlerArtifact, CrawlerArtifactType, CrawlerContents, CrawlerPromptEvent,
-    CrawlerRefreshEntry, CrawlerRefreshState, CrawlerSearchResponse, CrawlerStatus, CrawlerUrls,
+    CrawlContent, CrawlerArtifact, CrawlerArtifactType, CrawlerContents, CrawlerExtractResponse,
+    CrawlerPromptAnswer, CrawlerPromptEvent, CrawlerRefreshEntry, CrawlerRefreshState,
+    CrawlerSearchResponse, CrawlerStatus, CrawlerUrls,
 };
 
 /// Polling options for [`Crawl::wait`].
@@ -180,6 +183,29 @@ impl<'a> Crawl<'a> {
     ) -> Result<impl Stream<Item = Result<CrawlerPromptEvent, ScrapflyError>>, ScrapflyError> {
         let uuid = self.uuid_required()?;
         self.client.crawl_prompt(uuid, prompt, opts).await
+    }
+
+    /// Answer a question from this crawl's content, all at once. Thin wrapper
+    /// around [`Client::crawl_prompt_answer`].
+    pub async fn prompt_answer(
+        &self,
+        prompt: &str,
+        opts: Option<&CrawlPromptOptions>,
+    ) -> Result<CrawlerPromptAnswer, ScrapflyError> {
+        let uuid = self.uuid_required()?;
+        self.client.crawl_prompt_answer(uuid, prompt, opts).await
+    }
+
+    /// Extract a structured object shaped by `schema` from this crawl's
+    /// content. Thin wrapper around [`Client::crawl_extract`].
+    pub async fn extract(
+        &self,
+        prompt: &str,
+        schema: &serde_json::Value,
+        opts: Option<&CrawlExtractOptions>,
+    ) -> Result<CrawlerExtractResponse, ScrapflyError> {
+        let uuid = self.uuid_required()?;
+        self.client.crawl_extract(uuid, prompt, schema, opts).await
     }
 
     /// Re-scrape this crawl's URLs in place, right now. Thin wrapper around

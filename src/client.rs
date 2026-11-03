@@ -25,9 +25,10 @@ use crate::monitoring::{
 use crate::result::account::{AccountData, VerifyApiKeyResult};
 use crate::result::classify::{ClassifyRequest, ClassifyResult};
 use crate::result::crawler::{
-    CrawlerArtifact, CrawlerArtifactType, CrawlerContents, CrawlerPromptDone, CrawlerPromptEvent,
-    CrawlerPromptSource, CrawlerRefreshEntry, CrawlerRefreshState, CrawlerSearchResponse,
-    CrawlerStartResponse, CrawlerStatus, CrawlerUrls,
+    CrawlerArtifact, CrawlerArtifactType, CrawlerContents, CrawlerExtractResponse,
+    CrawlerPromptAnswer, CrawlerPromptDone, CrawlerPromptEvent, CrawlerPromptSource,
+    CrawlerRefreshEntry, CrawlerRefreshState, CrawlerSearchResponse, CrawlerStartResponse,
+    CrawlerStatus, CrawlerUrls,
 };
 use crate::result::extraction::ExtractionResult;
 use crate::result::scrape::{ResultData, ScrapeResult};
@@ -1316,13 +1317,7 @@ impl Client {
         );
         body.insert("crawl_ids".into(), serde_json::to_value(crawl_ids)?);
         body.insert("generation".into(), serde_json::Value::Object(generation));
-        if let Some(search) = opts.and_then(|o| o.search.as_ref()) {
-            let mut map = serde_json::Map::new();
-            search.apply(&mut map)?;
-            if !map.is_empty() {
-                body.insert("search".into(), serde_json::Value::Object(map));
-            }
-        }
+        apply_retrieval(&mut body, opts.and_then(|o| o.search.as_ref()))?;
 
         let url = self.build_url("/crawl/prompt", &[])?;
         let mut headers = HeaderMap::new();
@@ -1352,6 +1347,150 @@ impl Client {
         }
         let ids = [uuid.to_string()];
         self.crawls_prompt(&ids, prompt, opts).await
+    }
+
+    /// Answer a question from the content of one or more crawls, and return
+    /// the whole answer once generation completes.
+    ///
+    /// `POST /crawl/prompt` with `generation.stream: false`: the same facts
+    /// as the frames of [`Client::crawls_prompt`].
+    /// [`Client::crawl_prompt_answer`] is sugar over a one-element list.
+    ///
+    /// No retry: the request runs a fan-out and a generation, both billable.
+    pub async fn crawls_prompt_answer(
+        &self,
+        crawl_ids: &[String],
+        prompt: &str,
+        opts: Option<&CrawlPromptOptions>,
+    ) -> Result<CrawlerPromptAnswer, ScrapflyError> {
+        validate_crawl_ids(crawl_ids)?;
+        if prompt.is_empty() {
+            return Err(ScrapflyError::Config("prompt cannot be empty".into()));
+        }
+
+        let mut generation = serde_json::Map::new();
+        generation.insert("stream".into(), serde_json::Value::Bool(false));
+        if let Some(model) = opts.and_then(|o| o.model.as_deref()) {
+            generation.insert("model".into(), serde_json::Value::String(model.to_string()));
+        }
+        let mut body = serde_json::Map::new();
+        body.insert(
+            "prompt".into(),
+            serde_json::Value::String(prompt.to_string()),
+        );
+        body.insert("crawl_ids".into(), serde_json::to_value(crawl_ids)?);
+        body.insert("generation".into(), serde_json::Value::Object(generation));
+        apply_retrieval(&mut body, opts.and_then(|o| o.search.as_ref()))?;
+
+        self.post_crawler_json("/crawl/prompt", body).await
+    }
+
+    /// Answer a question from a single crawl's content, all at once.
+    pub async fn crawl_prompt_answer(
+        &self,
+        uuid: &str,
+        prompt: &str,
+        opts: Option<&CrawlPromptOptions>,
+    ) -> Result<CrawlerPromptAnswer, ScrapflyError> {
+        if uuid.is_empty() {
+            return Err(ScrapflyError::Config("uuid cannot be empty".into()));
+        }
+        let ids = [uuid.to_string()];
+        self.crawls_prompt_answer(&ids, prompt, opts).await
+    }
+
+    /// Extract a structured object from the content of one or more crawls.
+    ///
+    /// `POST /crawl/extract` retrieves like [`Client::crawls_prompt_answer`]
+    /// and answers with `data` shaped by `schema`, a JSON Schema object handed
+    /// to the model as its response schema. There is no streaming variant.
+    /// [`Client::crawl_extract`] is sugar over a one-element list.
+    ///
+    /// No retry: a retry re-runs the fan-out and the generation.
+    ///
+    /// ```no_run
+    /// # async fn run(client: scrapfly_sdk::Client, uuid: String) -> Result<(), scrapfly_sdk::ScrapflyError> {
+    /// #[derive(serde::Deserialize)]
+    /// struct Product { name: String, price: f64 }
+    /// #[derive(serde::Deserialize)]
+    /// struct Products { products: Vec<Product> }
+    ///
+    /// let schema = serde_json::json!({
+    ///     "type": "object",
+    ///     "properties": {"products": {"type": "array", "items": {
+    ///         "type": "object",
+    ///         "properties": {"name": {"type": "string"}, "price": {"type": "number"}},
+    ///         "required": ["name", "price"],
+    ///     }}},
+    ///     "required": ["products"],
+    /// });
+    /// let res = client.crawls_extract(&[uuid], "Every product with its price", &schema, None).await?;
+    /// let out: Products = res.decode()?;
+    /// # Ok(()) }
+    /// ```
+    pub async fn crawls_extract(
+        &self,
+        crawl_ids: &[String],
+        prompt: &str,
+        schema: &serde_json::Value,
+        opts: Option<&CrawlExtractOptions>,
+    ) -> Result<CrawlerExtractResponse, ScrapflyError> {
+        validate_crawl_ids(crawl_ids)?;
+        if prompt.is_empty() {
+            return Err(ScrapflyError::Config("prompt cannot be empty".into()));
+        }
+        if !schema.as_object().is_some_and(|o| !o.is_empty()) {
+            return Err(ScrapflyError::Config(
+                "schema must be a non-empty JSON Schema object".into(),
+            ));
+        }
+
+        let mut body = serde_json::Map::new();
+        body.insert(
+            "prompt".into(),
+            serde_json::Value::String(prompt.to_string()),
+        );
+        body.insert("crawl_ids".into(), serde_json::to_value(crawl_ids)?);
+        body.insert("schema".into(), schema.clone());
+        apply_retrieval(&mut body, opts.and_then(|o| o.search.as_ref()))?;
+
+        self.post_crawler_json("/crawl/extract", body).await
+    }
+
+    /// Extract a structured object from a single crawl's content.
+    pub async fn crawl_extract(
+        &self,
+        uuid: &str,
+        prompt: &str,
+        schema: &serde_json::Value,
+        opts: Option<&CrawlExtractOptions>,
+    ) -> Result<CrawlerExtractResponse, ScrapflyError> {
+        if uuid.is_empty() {
+            return Err(ScrapflyError::Config("uuid cannot be empty".into()));
+        }
+        let ids = [uuid.to_string()];
+        self.crawls_extract(&ids, prompt, schema, opts).await
+    }
+
+    /// POST `body` to a crawler endpoint that generates, once, and decode its
+    /// JSON answer. It shares the prompt's deadline: generation runs under the
+    /// same server budget.
+    async fn post_crawler_json<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        body: serde_json::Map<String, serde_json::Value>,
+    ) -> Result<T, ScrapflyError> {
+        let url = self.build_url(path, &[])?;
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+        let payload = serde_json::to_vec(&serde_json::Value::Object(body))?;
+        let resp = self.send_prompt_stream(url, headers, payload).await?;
+        let (status, _h, bytes) = read_response(resp).await?;
+        if status != 200 {
+            return Err(from_response(status, &bytes, 0, true));
+        }
+        Ok(serde_json::from_slice(&bytes)?)
     }
 
     /// Run one refresh of an existing crawl immediately, without waiting for
@@ -1835,6 +1974,35 @@ pub struct CrawlPromptOptions {
     pub search: Option<CrawlSearchOptions>,
     /// Generation model id. `None` uses the server default.
     pub model: Option<String>,
+}
+
+/// Options for [`Client::crawls_extract`].
+#[derive(Debug, Clone, Default)]
+pub struct CrawlExtractOptions {
+    /// Retrieval overrides. `None` uses the server's defaults.
+    pub search: Option<CrawlSearchOptions>,
+}
+
+/// Set the `search` block of a prompt or an extraction. That block takes no
+/// cursor: the API rejects the unknown field.
+fn apply_retrieval(
+    body: &mut serde_json::Map<String, serde_json::Value>,
+    search: Option<&CrawlSearchOptions>,
+) -> Result<(), ScrapflyError> {
+    let Some(search) = search else {
+        return Ok(());
+    };
+    if search.cursor.is_some() {
+        return Err(ScrapflyError::Config(
+            "cursor pages crawl search results, a prompt or an extraction takes none".into(),
+        ));
+    }
+    let mut map = serde_json::Map::new();
+    search.apply(&mut map)?;
+    if !map.is_empty() {
+        body.insert("search".into(), serde_json::Value::Object(map));
+    }
+    Ok(())
 }
 
 /// Enforce the shape both collection endpoints share: a non-empty list with

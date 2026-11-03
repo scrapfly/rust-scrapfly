@@ -582,6 +582,92 @@ pub enum CrawlerPromptEvent {
     Done(CrawlerPromptDone),
 }
 
+/// How much of the corpus a prompt answer or an extraction covers. A skipped
+/// crawl is never fatal.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct CrawlerPromptSearch {
+    /// `exact` or `partial`.
+    #[serde(default)]
+    pub completeness: String,
+    /// Crawls in the request.
+    #[serde(default)]
+    pub crawls_requested: u32,
+    /// Crawls opened.
+    #[serde(default)]
+    pub crawls_searched: u32,
+    /// Crawls the bound proved could not contribute.
+    #[serde(default)]
+    pub crawls_pruned_exact: u32,
+    /// Requested crawls that contributed nothing, with a reason.
+    #[serde(default, deserialize_with = "null_as_empty_vec")]
+    pub skipped: Vec<CrawlerSearchSkipped>,
+}
+
+/// Answer of `POST /crawl/prompt` with `generation.stream: false`: the facts
+/// of the stream, in one object.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct CrawlerPromptAnswer {
+    /// The prompt as the server understood it.
+    #[serde(default)]
+    pub prompt: String,
+    /// The whole answer.
+    #[serde(default)]
+    pub answer: String,
+    /// Retrieved chunks the answer may cite.
+    #[serde(default, deserialize_with = "null_as_empty_vec")]
+    pub sources: Vec<CrawlerPromptSource>,
+    /// See [`CrawlerPromptDone::sources_used`].
+    #[serde(default, deserialize_with = "null_as_empty_vec")]
+    pub sources_used: Vec<u32>,
+    /// See [`CrawlerPromptDone::sources_dropped`].
+    #[serde(default)]
+    pub sources_dropped: u32,
+    /// See [`CrawlerPromptDone::truncated`].
+    #[serde(default)]
+    pub truncated: bool,
+    /// Corpus coverage.
+    #[serde(default)]
+    pub search: CrawlerPromptSearch,
+    /// Actual charge, including zero. None when the server does not report it.
+    #[serde(default)]
+    pub api_credit: Option<u32>,
+}
+
+/// Answer of `POST /crawl/extract`.
+///
+/// `data` is the object the request's JSON Schema shaped; turn it into your
+/// own type with [`CrawlerExtractResponse::decode`]. The schema constrains the
+/// model as it generates and is not validated again afterwards, so validate
+/// anything you act on.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct CrawlerExtractResponse {
+    /// The prompt as the server understood it.
+    #[serde(default)]
+    pub prompt: String,
+    /// The extracted object.
+    #[serde(default)]
+    pub data: serde_json::Value,
+    /// Retrieved chunks the extraction was written from.
+    #[serde(default, deserialize_with = "null_as_empty_vec")]
+    pub sources: Vec<CrawlerPromptSource>,
+    /// See [`CrawlerPromptDone::sources_dropped`].
+    #[serde(default)]
+    pub sources_dropped: u32,
+    /// See [`CrawlerPromptDone::truncated`].
+    #[serde(default)]
+    pub truncated: bool,
+    /// Corpus coverage.
+    #[serde(default)]
+    pub search: CrawlerPromptSearch,
+}
+
+impl CrawlerExtractResponse {
+    /// Deserialize `data` into `T`.
+    pub fn decode<T: serde::de::DeserializeOwned>(&self) -> Result<T, serde_json::Error> {
+        T::deserialize(&self.data)
+    }
+}
+
 /// One entry in the streaming `urls` list.
 #[derive(Debug, Clone)]
 pub struct CrawlerUrlEntry {

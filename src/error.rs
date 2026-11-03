@@ -173,11 +173,12 @@ impl ScrapflyError {
 struct ErrorEnvelope {
     #[serde(default)]
     message: String,
-    // The legacy /scrape envelope uses `code`; the public /schedules
-    // envelope uses `error`. Accept either spelling so a single
-    // ErrorEnvelope handles both shapes.
-    #[serde(default, alias = "error")]
+    #[serde(default)]
     code: String,
+    // The public /schedules envelope carries the ERR:: code under `error`;
+    // the engine's crawler failures carry the message there, beside `code`.
+    #[serde(default)]
+    error: Option<serde_json::Value>,
     #[serde(default)]
     #[allow(dead_code)]
     error_id: String,
@@ -203,6 +204,15 @@ pub fn from_response(
     is_crawler: bool,
 ) -> ScrapflyError {
     let mut envelope: ErrorEnvelope = serde_json::from_slice(body).unwrap_or_default();
+    if let Some(serde_json::Value::String(error)) = envelope.error.take() {
+        if error.starts_with("ERR::") {
+            if envelope.code.is_empty() {
+                envelope.code = error;
+            }
+        } else if envelope.message.is_empty() {
+            envelope.message = error;
+        }
+    }
 
     // A failed scrape is returned as a full ScrapeResult with the real ERR:: code
     // at result.error.code, not as a flat envelope — /scrape answers 400 that way
