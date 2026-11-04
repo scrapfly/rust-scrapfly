@@ -728,18 +728,7 @@ impl Client {
 
             seen.insert(correlation_id.clone(), i);
 
-            let pairs = cfg.to_query_pairs()?;
-            let mut entry: HashMap<String, String> = HashMap::with_capacity(pairs.len());
-
-            for (k, v) in pairs {
-                if k == "key" {
-                    continue;
-                }
-
-                entry.insert(k, v);
-            }
-
-            body_configs.push(entry);
+            body_configs.push(batch_entry(cfg)?);
         }
 
         let body = serde_json::json!({ "configs": body_configs });
@@ -2184,6 +2173,54 @@ fn infer_format_from_content_type(ct: &str) -> String {
         "text/plain" => "text".into(),
         "application/json" => "json".into(),
         _ => String::new(),
+    }
+}
+
+/// One config of a batch: its scrape params without `key` (the batch's is in
+/// the URL), plus what a single scrape sends as the request itself. The API
+/// reads `method` and `body` from a batch entry and runs a GET without them.
+fn batch_entry(cfg: &ScrapeConfig) -> Result<HashMap<String, String>, ScrapflyError> {
+    let mut entry: HashMap<String, String> = cfg
+        .to_query_pairs()?
+        .into_iter()
+        .filter(|(k, _)| k != "key")
+        .collect();
+    entry.insert(
+        "method".into(),
+        cfg.method.unwrap_or(HttpMethod::Get).as_str().into(),
+    );
+    if let Some(body) = &cfg.body {
+        entry.insert("body".into(), body.clone());
+    }
+
+    Ok(entry)
+}
+
+#[cfg(test)]
+mod batch_entry_tests {
+    use super::*;
+
+    #[test]
+    fn a_batch_entry_carries_its_method_and_body() {
+        let post = ScrapeConfig::builder("https://web-scraping.dev/api")
+            .method(HttpMethod::Post)
+            .body(r#"{"q":1}"#)
+            .header("content-type", "application/json")
+            .correlation_id("post")
+            .build()
+            .unwrap();
+        let entry = batch_entry(&post).unwrap();
+        assert_eq!(entry.get("method").map(String::as_str), Some("POST"));
+        assert_eq!(entry.get("body").map(String::as_str), Some(r#"{"q":1}"#));
+        assert!(!entry.contains_key("key"));
+
+        let get = ScrapeConfig::builder("https://web-scraping.dev/page")
+            .correlation_id("get")
+            .build()
+            .unwrap();
+        let entry = batch_entry(&get).unwrap();
+        assert_eq!(entry.get("method").map(String::as_str), Some("GET"));
+        assert!(!entry.contains_key("body"));
     }
 }
 
