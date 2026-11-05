@@ -573,11 +573,7 @@ impl Client {
             // Api error rather than silently returning a failed result.
             return Err(ScrapflyError::Api(api_err));
         }
-        // Transparent large-object handling: when a scrape response is too
-        // large, the engine offloads the body to a signed URL and sets
-        // `format=clob|blob`, stashing the URL in `content`. The SDK must
-        // auto-fetch and surface the final bytes + a user-friendly format
-        // marker (clob→text, blob→binary). Mirrors `sdk/go/client.go::handleLargeObjects`.
+        // A clob or blob result is fetched from its URL and returned as an inline text or binary result.
         if result.result.success && result.result.status == "DONE" {
             let fmt = result.result.format.as_str();
             if fmt == "clob" || fmt == "blob" {
