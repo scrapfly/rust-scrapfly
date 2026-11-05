@@ -3,6 +3,7 @@
 //! Built on `reqwest` with `rustls`. Single shared [`reqwest::Client`]
 //! re-used across every call.
 
+use base64::Engine as _;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -591,7 +592,7 @@ impl Client {
 
     /// Fetch an offloaded large-object body from its signed URL, re-attaching
     /// the API key as a query param. Returns `(content, format)`:
-    /// `clob → ("…text…", "text")`, `blob → ("…bytes as lossy utf8…", "binary")`.
+    /// `clob → ("…text…", "text")`, `blob → ("…base64 of the bytes…", "binary")`.
     async fn fetch_large_object(
         &self,
         content_url: &str,
@@ -632,10 +633,12 @@ impl Client {
                 )))
             }
         };
-        // For blob (binary PDF, image, etc.) we use from_utf8_lossy to
-        // preserve the raw bytes in the `content` string field, matching
-        // the Go/Python SDKs' behavior.
-        let content = String::from_utf8_lossy(&body).into_owned();
+        // A blob is base64, as an inline binary result is: a String cannot hold its bytes.
+        let content = if format == "blob" {
+            base64::engine::general_purpose::STANDARD.encode(&body)
+        } else {
+            String::from_utf8_lossy(&body).into_owned()
+        };
         Ok((content, new_format.to_string()))
     }
 

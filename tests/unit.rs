@@ -2847,3 +2847,103 @@ async fn a_transport_error_does_not_print_the_key() {
     assert!(!shown.contains("0123456789abcdef"), "{shown}");
     assert!(shown.contains("key=REDACTED"), "{shown}");
 }
+
+/// Serves `/scrape` with a large object envelope, then the object itself, one request per connection.
+async fn serve_large_object(
+    listener: tokio::net::TcpListener,
+    format: &'static str,
+    content_type: &'static str,
+    body: &'static [u8],
+) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let port = listener.local_addr().expect("addr").port();
+    let envelope = format!(
+        r#"{{"config":{{"url":"https://web-scraping.dev/product/1"}},"context":{{}},"result":{{"status":"DONE","success":true,"status_code":200,"format":"{}","content":"http://127.0.0.1:{}/scrape/large_object/01"}}}}"#,
+        format, port
+    );
+    let replies: [(&str, Vec<u8>); 2] = [
+        ("application/json", envelope.into_bytes()),
+        (content_type, body.to_vec()),
+    ];
+
+    for (reply_type, reply) in replies {
+        let (mut socket, _) = listener.accept().await.expect("accept");
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 4096];
+        while !raw.windows(4).any(|w| w == b"\r\n\r\n") {
+            let n = socket.read(&mut buf).await.expect("read");
+            if n == 0 {
+                break;
+            }
+            raw.extend_from_slice(&buf[..n]);
+        }
+        let head = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            reply_type,
+            reply.len()
+        );
+        socket.write_all(head.as_bytes()).await.expect("write");
+        socket.write_all(&reply).await.expect("write");
+        socket.flush().await.expect("flush");
+    }
+}
+
+#[tokio::test]
+async fn a_large_blob_keeps_every_byte_as_base64() {
+    use base64::Engine;
+
+    const PDF: &[u8] = b"%PDF-1.7\n\x00\xff\x8b\xe2\x80";
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let server = tokio::spawn(serve_large_object(listener, "blob", "application/pdf", PDF));
+
+    let client = Client::builder()
+        .api_key("scp-live-key")
+        .host(format!("http://127.0.0.1:{}", port))
+        .build()
+        .expect("client");
+    let cfg = ScrapeConfig::builder("https://web-scraping.dev/product/1")
+        .build()
+        .expect("config");
+    let result = client.scrape(&cfg).await.expect("scrape");
+    server.await.expect("server");
+
+    // An inline binary result is base64 too: one way to read either.
+    assert_eq!(result.result.format, "binary");
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&result.result.content)
+        .expect("base64 content");
+    assert_eq!(bytes, PDF);
+}
+
+#[tokio::test]
+async fn a_large_clob_is_its_text() {
+    const PAGE: &[u8] = br#"{"products": [{"id": 1}]}"#;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let server = tokio::spawn(serve_large_object(
+        listener,
+        "clob",
+        "application/json; charset=utf-8",
+        PAGE,
+    ));
+
+    let client = Client::builder()
+        .api_key("scp-live-key")
+        .host(format!("http://127.0.0.1:{}", port))
+        .build()
+        .expect("client");
+    let cfg = ScrapeConfig::builder("https://web-scraping.dev/product/1")
+        .build()
+        .expect("config");
+    let result = client.scrape(&cfg).await.expect("scrape");
+    server.await.expect("server");
+
+    assert_eq!(result.result.format, "text");
+    assert_eq!(result.result.content.as_bytes(), PAGE);
+}
