@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install stable Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -28,7 +28,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache cargo registry + build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
