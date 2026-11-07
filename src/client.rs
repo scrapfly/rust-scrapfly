@@ -528,6 +528,10 @@ impl Client {
             });
         }
         let mut result: ScrapeResult = serde_json::from_slice(&body_bytes)?;
+        // QUEUED: a scrape with a webhook, delivered to it later.
+        if result.result.status == "QUEUED" {
+            return Ok(result);
+        }
         // Upstream failure handling: the Scrapfly API call itself may succeed
         // (HTTP 200) while the *target* site returned a failure. In that case
         // result.result.success is false and we must surface it as an error

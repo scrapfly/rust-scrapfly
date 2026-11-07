@@ -2947,3 +2947,45 @@ async fn a_large_clob_is_its_text() {
     assert_eq!(result.result.format, "text");
     assert_eq!(result.result.content.as_bytes(), PAGE);
 }
+
+async fn scrape_against(
+    response_body: &'static str,
+) -> Result<scrapfly_sdk::result::scrape::ScrapeResult, Box<scrapfly_sdk::ScrapflyError>> {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let server = tokio::spawn(capture_one_request(listener, response_body));
+    let client = Client::builder()
+        .api_key("scp-test-key")
+        .host(format!("http://127.0.0.1:{}", port))
+        .build()
+        .expect("client");
+    let config = ScrapeConfig::builder("https://web-scraping.dev/product/1")
+        .webhook("my-webhook")
+        .build()
+        .expect("config");
+    let answer = client.scrape(&config).await.map_err(Box::new);
+    server.await.expect("server");
+    answer
+}
+
+#[tokio::test]
+async fn scrape_queued_for_a_webhook_is_returned() {
+    let result = scrape_against(
+        r#"{"config":{},"context":{},"uuid":"01","result":{"status":"QUEUED","success":null,"status_code":null,"content":"","error":null}}"#,
+    )
+    .await
+    .expect("a queued scrape is no error");
+    assert_eq!(result.result.status, "QUEUED");
+    assert!(!result.result.success);
+}
+
+#[tokio::test]
+async fn scrape_that_failed_is_still_an_error() {
+    let answer = scrape_against(
+        r#"{"config":{},"context":{},"uuid":"01","result":{"status":"DONE","success":false,"status_code":500,"content":"","error":null}}"#,
+    )
+    .await;
+    assert!(answer.is_err());
+}

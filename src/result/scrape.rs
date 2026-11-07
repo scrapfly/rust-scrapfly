@@ -44,8 +44,8 @@ pub struct ResultData {
     /// Status string (`DONE`, etc.).
     #[serde(default)]
     pub status: String,
-    /// Scrape success marker.
-    #[serde(default)]
+    /// Scrape success marker. False while a scrape with a webhook is queued.
+    #[serde(default, deserialize_with = "null_as_false")]
     pub success: bool,
     /// Scrape duration (seconds).
     #[serde(default)]
@@ -100,6 +100,14 @@ pub struct ScrapeErrorDetails {
     /// Retryable flag.
     #[serde(default)]
     pub retryable: bool,
+}
+
+/// Coerce JSON `null | absent | bool` into a plain `bool`, where null and absent both collapse to false.
+fn null_as_false<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<bool>::deserialize(deserializer)?.unwrap_or(false))
 }
 
 /// Coerce JSON `null | absent | number` into a plain `u16`, where null and
