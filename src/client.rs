@@ -910,13 +910,29 @@ impl Client {
         let url = self.build_url("/screenshot", &pairs)?;
         let resp = self.send_with_retry(Method::GET, url, None, None).await?;
         let (status, headers, body) = read_response(resp).await?;
-        if status != 200 {
-            return Err(from_response(status, &body, 0, false));
+        // 201: a screenshot with a webhook, delivered to it later.
+        if status == 201 {
+            if let Ok(enqueued) = serde_json::from_slice::<serde_json::Value>(&body) {
+                let job_uuid = enqueued["job_uuid"].as_str().filter(|job| !job.is_empty());
+                if let (Some(true), Some(job_uuid)) =
+                    (enqueued["webhook_enqueued"].as_bool(), job_uuid)
+                {
+                    return Ok(ScreenshotResult {
+                        image: bytes::Bytes::new(),
+                        metadata: ScreenshotMetadata::default(),
+                        job_uuid: Some(job_uuid.to_string()),
+                    });
+                }
+            }
         }
         let content_type = headers
             .get(CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .unwrap_or("application/octet-stream");
+        // A JSON answer is never an image.
+        if status != 200 || content_type.starts_with("application/json") {
+            return Err(from_response(status, &body, 0, false));
+        }
         let ext = content_type
             .split('/')
             .nth(1)
@@ -940,6 +956,7 @@ impl Client {
                 upstream_status_code,
                 upstream_url,
             },
+            job_uuid: None,
         })
     }
 

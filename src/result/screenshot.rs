@@ -11,6 +11,8 @@ pub struct ScreenshotResult {
     pub image: Bytes,
     /// Image metadata.
     pub metadata: ScreenshotMetadata,
+    /// The job of a screenshot with a webhook: the image is delivered to the webhook, `image` and `metadata` are empty.
+    pub job_uuid: Option<String>,
 }
 
 /// Screenshot metadata parsed from the response headers.
@@ -28,6 +30,12 @@ impl ScreenshotResult {
     /// Save the image to disk at `{dir}/{name}.{extension}`. Creates `dir`
     /// (and parents) best-effort. Returns the written path.
     pub fn save(&self, name: &str, dir: Option<&Path>) -> std::io::Result<PathBuf> {
+        if self.image.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "screenshot image is empty",
+            ));
+        }
         let dir = dir.unwrap_or_else(|| Path::new("."));
         std::fs::create_dir_all(dir)?;
         let ext = if self.metadata.extension_name.is_empty() {
