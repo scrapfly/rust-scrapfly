@@ -695,7 +695,7 @@ impl Client {
     ) -> Result<impl Stream<Item = (String, crate::batch::BatchOutcome)>, ScrapflyError> {
         use crate::batch::{
             api_error_from_part, build_proxified_response, decode_part_body, parts_from_response,
-            BatchOutcome,
+            BatchOutcome, EnqueueAck,
         };
 
         if configs.is_empty() {
@@ -712,9 +712,14 @@ impl Client {
         }
 
         let mut seen: HashMap<String, usize> = HashMap::new();
+        let mut webhook_parts: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut body_configs: Vec<HashMap<String, String>> = Vec::with_capacity(configs.len());
 
         for (i, cfg) in configs.iter().enumerate() {
+            if cfg.webhook.is_some() {
+                webhook_parts.extend(cfg.correlation_id.clone());
+            }
+
             let correlation_id = cfg.correlation_id.clone().ok_or_else(|| {
                 ScrapflyError::Config(format!(
                     "scrape_batch: configs[{}] is missing correlation_id (required for matching streamed parts)",
@@ -775,7 +780,7 @@ impl Client {
 
         let parts_stream = parts_from_response(resp)?;
 
-        Ok(parts_stream.map(|part_r| match part_r {
+        Ok(parts_stream.map(move |part_r| match part_r {
             Ok(part) => {
                 let correlation_id = part
                     .headers
@@ -801,6 +806,15 @@ impl Client {
                 // the scrape envelope — surface them as typed errors.
                 if let Some(err) = api_error_from_part(&part) {
                     return (correlation_id, BatchOutcome::Err(err));
+                }
+
+                // A config with a webhook is answered by its enqueue ack, the scrape's answer under `result`.
+                if webhook_parts.contains(&correlation_id) {
+                    if let Ok(ack) = decode_part_body::<EnqueueAck>(&part) {
+                        if ack.enqueued {
+                            return (correlation_id, BatchOutcome::Scrape(ack.result));
+                        }
+                    }
                 }
 
                 match decode_part_body::<ScrapeResult>(&part) {

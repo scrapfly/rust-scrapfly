@@ -2989,3 +2989,105 @@ async fn scrape_that_failed_is_still_an_error() {
     .await;
     assert!(answer.is_err());
 }
+
+async fn batch_with_a_webhook_against(
+    status: u16,
+    inner: &str,
+) -> scrapfly_sdk::batch::BatchOutcome {
+    use futures_util::StreamExt;
+
+    let body = format!(
+        r#"{{"correlation_id":"hook","webhook_name":"my-webhook","job_uuid":"01","enqueued":true,"result":{}}}"#,
+        inner
+    );
+    let multipart = format!(
+        "--b0und\r\nContent-Type: application/json\r\nX-Scrapfly-Correlation-Id: hook\r\nX-Scrapfly-Scrape-Status: {}\r\nContent-Length: {}\r\n\r\n{}\r\n--b0und--\r\n",
+        status,
+        body.len(),
+        body
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let server = tokio::spawn(async move {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let (mut socket, _) = listener.accept().await.expect("accept");
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 4096];
+        loop {
+            let n = socket.read(&mut buf).await.expect("read");
+            raw.extend_from_slice(&buf[..n]);
+            let text = String::from_utf8_lossy(&raw).to_string();
+            if let Some(end) = text.find("\r\n\r\n") {
+                let want = text
+                    .to_ascii_lowercase()
+                    .split("content-length:")
+                    .nth(1)
+                    .and_then(|v| {
+                        v.lines()
+                            .next()
+                            .map(|l| l.trim().parse::<usize>().unwrap_or(0))
+                    })
+                    .unwrap_or(0);
+                if raw.len() - (end + 4) >= want {
+                    break;
+                }
+            }
+        }
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: multipart/mixed; boundary=b0und\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            multipart.len(),
+            multipart
+        );
+        socket.write_all(response.as_bytes()).await.expect("write");
+    });
+    let client = Client::builder()
+        .api_key("scp-test-key")
+        .host(format!("http://127.0.0.1:{}", port))
+        .build()
+        .expect("client");
+    let config = ScrapeConfig::builder("https://web-scraping.dev/product/1")
+        .webhook("my-webhook")
+        .correlation_id("hook")
+        .build()
+        .expect("config");
+    let stream = client.scrape_batch(&[config]).await.expect("batch");
+    futures_util::pin_mut!(stream);
+    let (_, outcome) = stream.next().await.expect("one part");
+    server.await.expect("server");
+    outcome
+}
+
+#[tokio::test]
+async fn batch_reads_the_enqueue_ack_of_a_webhook() {
+    let outcome = batch_with_a_webhook_against(
+        202,
+        r#"{"config":{},"context":{},"uuid":"01","result":{"status":"QUEUED","success":null,"status_code":null,"content":"","error":null}}"#,
+    )
+    .await;
+    match outcome {
+        scrapfly_sdk::batch::BatchOutcome::Scrape(result) => {
+            assert_eq!(result.result.status, "QUEUED");
+            assert_eq!(result.uuid, "01");
+        }
+        other => panic!("not a scrape: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn batch_keeps_the_error_of_a_failed_enqueue() {
+    let outcome = batch_with_a_webhook_against(
+        429,
+        r#"{"config":{},"context":{},"uuid":"01","result":{"status":"DONE","success":false,"status_code":null,"content":"","error":{"code":"ERR::WEBHOOK::QUEUE_FULL","message":"full"}}}"#,
+    )
+    .await;
+    match outcome {
+        scrapfly_sdk::batch::BatchOutcome::Scrape(result) => {
+            let error = result.result.error.expect("the error is kept");
+            assert_eq!(error.code, "ERR::WEBHOOK::QUEUE_FULL");
+        }
+        other => panic!("not a scrape: {other:?}"),
+    }
+}

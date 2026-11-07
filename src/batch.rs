@@ -483,6 +483,16 @@ pub(crate) fn api_error_from_part(part: &BatchPart) -> Option<ScrapflyError> {
     Some(crate::error::from_response(status, &body, 0, false))
 }
 
+/// The part answering a config with a webhook.
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct EnqueueAck {
+    /// True once the job is in the queue.
+    #[serde(default)]
+    pub(crate) enqueued: bool,
+    /// The scrape's answer.
+    pub(crate) result: crate::result::scrape::ScrapeResult,
+}
+
 /// Decode a part body according to its Content-Type. Supports
 /// `application/json` (default) and `application/msgpack`.
 pub fn decode_part_body<T: serde::de::DeserializeOwned>(
