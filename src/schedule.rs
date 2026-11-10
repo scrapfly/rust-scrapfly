@@ -110,7 +110,7 @@ pub struct UpdateScheduleRequest {
 pub struct Schedule {
     /// Server-issued schedule UUID.
     pub id: String,
-    /// Kind of the underlying job: `"scrape" | "screenshot" | "crawler"`.
+    /// Kind of the underlying job, for example `"api.scrape"`, `"api.screenshot"` or `"api.crawler"`.
     pub kind: String,
     /// Lifecycle status: `"ACTIVE" | "PAUSED" | "CANCELLED"`.
     pub status: String,
@@ -129,7 +129,7 @@ pub struct Schedule {
     /// Free-form notes attached at create / update time.
     #[serde(default)]
     pub notes: Option<String>,
-    /// User UUID that authored the schedule.
+    /// How the schedule was created: `api:project:<project id>` through the API, `None` from the dashboard.
     #[serde(default)]
     pub created_by: Option<String>,
     /// ISO8601 datetime of creation.
@@ -151,7 +151,7 @@ pub struct Schedule {
     /// UUID of the owning user.
     #[serde(default)]
     pub user_uuid: Option<String>,
-    /// Consecutive failure counter (auto-cancels after a server-defined cap).
+    /// Failed fires in a row. The server pauses the schedule when a fire cannot be queued after a set number of them.
     #[serde(default)]
     pub consecutive_failures: Option<i64>,
 }
@@ -161,7 +161,7 @@ pub struct Schedule {
 pub struct ListSchedulesOptions {
     /// Restrict to a single status (`"ACTIVE" | "PAUSED" | "CANCELLED"`).
     pub status: Option<String>,
-    /// Restrict to a single kind (`"scrape" | "screenshot" | "crawler"`).
+    /// Restrict to a single kind, for example `"api.scrape"`.
     pub kind: Option<String>,
 }
 
