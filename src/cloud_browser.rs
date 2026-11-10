@@ -136,6 +136,12 @@ pub struct BrowserConfig {
     /// See <https://scrapfly.io/docs/cloud-browser-api/extensions>.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub extensions: Vec<String>,
+    /// Return large downloaded files from `ScrapiumBrowser.getDownloads` as IO
+    /// stream handles instead of inline base64: read them with
+    /// [`CloudBrowserDownloads`](crate::CloudBrowserDownloads).
+    /// See <https://scrapfly.io/docs/cloud-browser-api/file-downloads#large-downloads>.
+    #[serde(skip_serializing_if = "is_false")]
+    pub downloads_stream: bool,
 }
 
 /// Return the deterministic project salt for an api key (`sha256(api_key)[:8]`).
@@ -365,6 +371,9 @@ impl Client {
         if let Some(v) = &config.rtc_password {
             pairs.push(("rtc_password".into(), v.clone()));
         }
+        if config.downloads_stream {
+            pairs.push(("downloads_stream".into(), "true".into()));
+        }
         if !config.hitl_allowed_networks.is_empty() {
             pairs.push((
                 "hitl_allowed_networks".into(),
@@ -372,7 +381,13 @@ impl Client {
             ));
         }
         let qs = serde_urlencoded::to_string(&pairs).unwrap_or_default();
-        format!("{}?{}", ws_host, qs)
+        // A WebSocket request needs a path before its query.
+        let authority = ws_host
+            .split_once("://")
+            .map(|(_, rest)| rest)
+            .unwrap_or(&ws_host);
+        let separator = if authority.contains('/') { "?" } else { "/?" };
+        format!("{}{}{}", ws_host, separator, qs)
     }
 
     /// Return the deterministic project salt for this client's api key.

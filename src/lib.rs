@@ -72,6 +72,7 @@
 pub mod batch;
 pub mod client;
 pub mod cloud_browser;
+pub mod cloud_browser_downloads;
 pub mod config;
 pub mod crawler;
 pub mod enums;
@@ -85,6 +86,11 @@ pub use client::{
     CrawlSearchOptions, CrawlerSearchMode, OnRequest,
 };
 pub use cloud_browser::{project_salt, BrowserConfig, UnblockConfig, UnblockResult};
+#[cfg(feature = "chromiumoxide")]
+pub use cloud_browser_downloads::ChromiumoxideCdp;
+pub use cloud_browser_downloads::{
+    parse_downloads, BrowserDownload, CdpError, CdpSender, CloudBrowserDownloads, DownloadError,
+};
 pub use config::crawler::CrawlerConfig;
 pub use config::extraction::ExtractionConfig;
 pub use config::scrape::ScrapeConfig;

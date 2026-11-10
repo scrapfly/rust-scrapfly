@@ -287,6 +287,56 @@ fn cloud_browser_url_sends_target_url() {
 }
 
 #[test]
+fn cloud_browser_url_has_a_path_before_its_query() {
+    for host in [
+        "wss://browser.scrapfly.io",
+        "https://browser.scrapfly.io",
+        "browser.scrapfly.io:8443",
+    ] {
+        let client = Client::builder()
+            .api_key(VNC_TEST_API_KEY.to_string())
+            .cloud_browser_host(host)
+            .build()
+            .expect("client");
+        let url = client.cloud_browser_url(&BrowserConfig::default());
+        let request_target = url.split_once("://").map(|(_, rest)| rest).unwrap_or(&url);
+        assert!(
+            request_target.contains("/?api_key="),
+            "no path before the query in {url}"
+        );
+    }
+
+    let client = Client::builder()
+        .api_key(VNC_TEST_API_KEY.to_string())
+        .cloud_browser_host("wss://browser.scrapfly.io/cdp")
+        .build()
+        .expect("client");
+    let url = client.cloud_browser_url(&BrowserConfig::default());
+    assert!(
+        url.starts_with("wss://browser.scrapfly.io/cdp?api_key="),
+        "path changed in {url}"
+    );
+}
+
+#[test]
+fn cloud_browser_url_sends_downloads_stream() {
+    let client = Client::builder()
+        .api_key(VNC_TEST_API_KEY.to_string())
+        .build()
+        .expect("client");
+    let cfg = BrowserConfig {
+        downloads_stream: true,
+        ..Default::default()
+    };
+    assert!(client
+        .cloud_browser_url(&cfg)
+        .contains("downloads_stream=true"));
+    assert!(!client
+        .cloud_browser_url(&BrowserConfig::default())
+        .contains("downloads_stream"));
+}
+
+#[test]
 fn cloud_browser_url_omits_target_url_when_unset() {
     let client = Client::builder()
         .api_key(VNC_TEST_API_KEY.to_string())

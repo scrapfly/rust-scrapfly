@@ -26,6 +26,8 @@ futures-util = "0.3"
 bytes = "1"
 sha2 = "0.10"
 hex = "0.4"
+# CloudBrowserDownloads over a chromiumoxide Page (feature "chromiumoxide").
+chromiumoxide = { version = "0.7", optional = true, default-features = false, features = ["tokio-runtime"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
