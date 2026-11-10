@@ -316,6 +316,17 @@ fn cloud_browser_url_has_a_path_before_its_query() {
         url.starts_with("wss://browser.scrapfly.io/cdp?api_key="),
         "path changed in {url}"
     );
+
+    let client = Client::builder()
+        .api_key(VNC_TEST_API_KEY.to_string())
+        .cloud_browser_host("wss://browser.scrapfly.io/?region=eu")
+        .build()
+        .expect("client");
+    let url = client.cloud_browser_url(&BrowserConfig::default());
+    assert!(
+        url.starts_with("wss://browser.scrapfly.io/?region=eu&api_key="),
+        "host query lost in {url}"
+    );
 }
 
 #[test]

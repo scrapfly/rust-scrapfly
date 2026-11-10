@@ -381,12 +381,18 @@ impl Client {
             ));
         }
         let qs = serde_urlencoded::to_string(&pairs).unwrap_or_default();
-        // A WebSocket request needs a path before its query.
+        // A WebSocket request needs a path before its query; a host may carry a query of its own.
         let authority = ws_host
             .split_once("://")
             .map(|(_, rest)| rest)
             .unwrap_or(&ws_host);
-        let separator = if authority.contains('/') { "?" } else { "/?" };
+        let separator = if authority.contains('?') {
+            "&"
+        } else if authority.contains('/') {
+            "?"
+        } else {
+            "/?"
+        };
         format!("{}{}{}", ws_host, separator, qs)
     }
 
