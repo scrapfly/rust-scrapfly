@@ -226,7 +226,8 @@ impl Client {
             .await
     }
 
-    /// List the schedules of the API key's project, optionally filtered by kind/status.
+    /// List the schedules of the API key's project and environment, optionally filtered by
+    /// kind/status.
     pub async fn list_schedules(
         &self,
         opts: Option<&ListSchedulesOptions>,
