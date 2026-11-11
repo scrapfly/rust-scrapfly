@@ -305,14 +305,14 @@ impl Client {
             .await
     }
 
-    /// Pause an active schedule. Idempotent on already-paused schedules.
+    /// Pause an active schedule. A schedule that is not active is refused with a 409.
     pub async fn pause_schedule(&self, id: &str) -> Result<Schedule, ScrapflyError> {
         let path = format!("/schedules/{}/pause", url_path_escape(id));
         self.schedule_request_json::<Schedule>(Method::POST, &path, &[], None)
             .await
     }
 
-    /// Resume a paused schedule. Idempotent on already-active schedules.
+    /// Resume a paused schedule. A schedule that is not paused, or has no fire left, is refused with a 409.
     pub async fn resume_schedule(&self, id: &str) -> Result<Schedule, ScrapflyError> {
         let path = format!("/schedules/{}/resume", url_path_escape(id));
         self.schedule_request_json::<Schedule>(Method::POST, &path, &[], None)
