@@ -41,61 +41,51 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## Proxy pools
+## Unblocker
 
-`proxy_pool` picks the proxy pool of the Web Scraping API, the Crawler and the
-Screenshot API. Each pool sets both the proxy network and the anti-bot bypass
-(the Unblocker):
-
-| Variant | Wire value | What it runs |
-|---|---|---|
-| `ProxyPool::Basic` | `basic` | datacenter proxies, Unblocker off |
-| `ProxyPool::Unblocker` | `unblocker` | residential proxies, Unblocker on |
-| `ProxyPool::UnblockerUltra` | `unblocker_ultra` | residential proxies, Unblocker on, the only pool accepted by targets and anti-bot protections that have a price of their own |
-| `ProxyPool::Auto` | `auto` | the API picks the pool before the request, from the target's profile: the Unblocker on datacenter proxies, or the pool the target needs; accepted on every target, the ones that require `unblocker_ultra` included, where their price is added; priced as the pool it runs on |
+The Unblocker is Scrapfly's anti-bot bypass. Turn it on per request:
 
 ```rust
-let cfg = ScrapeConfig::builder("https://example.com")
-    .proxy_pool(ProxyPool::Unblocker)
+let cfg = ScrapeConfig::builder("https://web-scraping.dev/product/1")
+    .unblocker(true)
     .build()?;
 ```
 
-`CrawlerConfig::builder("https://example.com").proxy_pool(ProxyPool::Unblocker)`
-does the same for a crawl. A request on `basic` or `unblocker` against a target
-or anti-bot protection that has a price of its own fails with
-`ERR::PROXY::UNBLOCKER_ULTRA_REQUIRED` (HTTP 422, not billed); retry it with
-`ProxyPool::UnblockerUltra`. Without `proxy_pool` the SDK sends none.
-`ProxyPool::PublicTorPool` (`public_tor_pool`) routes through the Tor network,
-the only pool that reaches `.onion` sites.
+`CrawlerConfig::builder("https://web-scraping.dev/").unblocker(true)` does the
+same for a crawl.
 
-The answer names the pool you asked for the way your account reads it.
-`result.config["proxy_pool"]` and
-`result.context["proxy"]["pool"]` read `public_tor_pool` for Tor and one of
-your own pools by its name. Otherwise, when the Unblocker ran (asked, or forced
-by a target that requires it), `basic` and `unblocker` read `unblocker` and any
-other pool `unblocker_ultra`. Without the Unblocker a Scrapfly pool reads by its
-network (`basic`, `unblocker`, `mobile`, `isp`) and any other name as sent.
-`result.context["proxy"]` also gives the network and country.
+## Proxy pools
 
-The Screenshot API takes these four pools only and ignores any other value.
-Cloud Browser keeps its own pools, `datacenter`, `residential`, `tor` and
-`byop`, and refuses these four.
+`proxy_pool` picks the proxy pool of the Web Scraping API and the Crawler:
+
+| Variant | Wire value | What it runs |
+|---|---|---|
+| `ProxyPool::PublicDatacenterPool` | `public_datacenter_pool` | datacenter proxies, the default |
+| `ProxyPool::PublicResidentialPool` | `public_residential_pool` | residential proxies |
+| `ProxyPool::PublicTorPool` | `public_tor_pool` | the Tor network, the only pool that reaches `.onion` sites |
+
+```rust
+let cfg = ScrapeConfig::builder("https://web-scraping.dev/product/1")
+    .proxy_pool(ProxyPool::PublicResidentialPool)
+    .build()?;
+```
+
+Without `proxy_pool` the SDK sends none. `ProxyPool::Basic`,
+`ProxyPool::Unblocker`, `ProxyPool::UnblockerUltra` and `ProxyPool::Auto` name
+pools the API does not accept yet: a request naming one fails with
+`ERR::PROXY::POOL_NOT_FOUND`. The Screenshot API picks its pool itself and
+ignores the `proxy_pool` of `ScreenshotConfig`. Cloud Browser keeps its own
+pools, `datacenter`, `residential`, `tor` and `byop`.
 
 `ProxyPool` is `#[non_exhaustive]`: a `match` on it needs a wildcard arm.
 
-### Deprecated: `unblocker` and `asp`
-
-The `unblocker` toggle and its `asp` alias are deprecated: use `proxy_pool`
-(`ProxyPool::UnblockerUltra` for the Unblocker). The
-[migration guide](https://scrapfly.io/new-pricing#legacy-spellings) covers the
-requests written before the proxy pools, the pool names
-`ProxyPool::PublicDatacenterPool` and `ProxyPool::PublicResidentialPool`
-included.
+## `asp`, the deprecated alias
 
 `asp` is the previous name of the toggle. `ScrapeConfigBuilder::asp` and
-`CrawlerConfigBuilder::asp` are its deprecated input aliases. When both names
-are supplied, `asp` wins in either call order, so an explicit `.asp(false)`
-still turns the feature off. The two names are never OR-ed.
+`CrawlerConfigBuilder::asp` are its deprecated input aliases and keep working:
+existing code needs no edit. When both names are supplied, `asp` wins in either
+call order, so an explicit `.asp(false)` still turns the feature off. The two
+names are never OR-ed.
 
 On the built structs there is a single field, `ScrapeConfig::asp` /
 `CrawlerConfig::asp`. It keeps the old name because that name is the wire key
@@ -105,7 +95,7 @@ with `unblocker_enabled()` and write it with `set_unblocker()`, so a config can
 still be flipped after `build()`:
 
 ```rust
-let mut cfg = ScrapeConfig::builder("https://example.com")
+let mut cfg = ScrapeConfig::builder("https://web-scraping.dev/product/1")
     .unblocker(true)
     .build()?;
 cfg.set_unblocker(false); // same slot as `cfg.asp = false`; feature is off

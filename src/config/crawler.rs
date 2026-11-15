@@ -136,10 +136,7 @@ pub struct CrawlerConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refresh_interval: Option<u32>,
 
-    /// Enable the Unblocker (anti-bot bypass). Deprecated: use
-    /// [`proxy_pool`](Self::proxy_pool) (`unblocker_ultra` for the Unblocker).
-    /// The migration guide covers requests written before the proxy pools:
-    /// <https://scrapfly.io/new-pricing#legacy-spellings>
+    /// Enable the Unblocker (anti-bot bypass).
     ///
     /// The field keeps the deprecated `asp` name on purpose: this struct
     /// derives `Serialize`, so the Rust field name *is* the `POST /crawl`
@@ -150,8 +147,8 @@ pub struct CrawlerConfig {
     /// same slot after `build()`.
     #[serde(skip_serializing_if = "is_false")]
     pub asp: bool,
-    /// Proxy pool: `basic`, `unblocker`, `unblocker_ultra` or `auto`, each of
-    /// which sets the Unblocker itself.
+    /// Proxy pool: `public_datacenter_pool` (the default),
+    /// `public_residential_pool` or `public_tor_pool`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proxy_pool: Option<String>,
     /// Proxy country.
@@ -544,19 +541,14 @@ impl CrawlerConfigBuilder {
         self.cfg.refresh_interval = Some(v);
         self
     }
-    /// Unblocker (anti-bot bypass) toggle. Deprecated: use
-    /// [`proxy_pool`](Self::proxy_pool) (`unblocker_ultra` for the Unblocker).
-    /// The migration guide covers requests written before the proxy pools:
-    /// <https://scrapfly.io/new-pricing#legacy-spellings>
+    /// Enable the Unblocker (anti-bot bypass).
     pub fn unblocker(mut self, v: bool) -> Self {
         self.unblocker_input = v;
         self.unblocker_set = true;
         self
     }
-    /// Enable the Unblocker under its deprecated name. Deprecated: use
-    /// [`proxy_pool`](Self::proxy_pool) (`unblocker_ultra` for the Unblocker).
-    /// The migration guide covers requests written before the proxy pools:
-    /// <https://scrapfly.io/new-pricing#legacy-spellings>
+    /// Enable the Unblocker under its deprecated name: use
+    /// [`unblocker`](Self::unblocker).
     ///
     /// When both names are supplied this one wins, in either call order.
     pub fn asp(mut self, v: bool) -> Self {
@@ -564,7 +556,8 @@ impl CrawlerConfigBuilder {
         self.asp_set = true;
         self
     }
-    /// Set the proxy pool of every crawled page, e.g. `ProxyPool::Unblocker`.
+    /// Set the proxy pool of every crawled page, e.g.
+    /// `ProxyPool::PublicResidentialPool`.
     pub fn proxy_pool(mut self, v: impl Into<String>) -> Self {
         self.cfg.proxy_pool = Some(v.into());
         self

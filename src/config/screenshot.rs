@@ -40,12 +40,8 @@ pub struct ScreenshotConfig {
     pub webhook: Option<String>,
     /// Simulated vision deficiency.
     pub vision_deficiency: Option<VisionDeficiencyType>,
-    /// Proxy pool: [`ProxyPool::Basic`], [`ProxyPool::Unblocker`],
-    /// [`ProxyPool::UnblockerUltra`] or [`ProxyPool::Auto`]. The Screenshot API
-    /// takes these four only and ignores any other value. `None` sends no
-    /// `proxy_pool` and
-    /// the API's screenshot defaults apply. The screenshot price is the same
-    /// on every pool, and a screenshot is never retried.
+    /// Sent as `proxy_pool`. The Screenshot API picks its pool itself and
+    /// ignores this value. `None` sends no `proxy_pool`.
     pub proxy_pool: Option<ProxyPool>,
 }
 
@@ -207,7 +203,8 @@ impl ScreenshotConfigBuilder {
         self.cfg.vision_deficiency = Some(v);
         self
     }
-    /// Set the proxy pool (`basic`, `unblocker`, `unblocker_ultra` or `auto`).
+    /// Set the `proxy_pool` sent. The Screenshot API picks its pool itself and
+    /// ignores this value.
     pub fn proxy_pool(mut self, p: ProxyPool) -> Self {
         self.cfg.proxy_pool = Some(p);
         self

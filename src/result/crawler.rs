@@ -736,7 +736,7 @@ pub struct CrawlerContents {
     /// `url → format → content`. The API can emit `null` for a format that
     /// couldn't be produced for a given URL (e.g. `extracted_data` on a page
     /// that no template matched); the SDK flattens `null → ""` so consumers
-    /// always get a string and can check emptiness. Mirrors Go's map[string]string
+    /// always get a string and can check emptiness. Mirrors Go's `map[string]string`
     /// zero-value semantics.
     #[serde(default, deserialize_with = "deserialize_contents_map")]
     pub contents: BTreeMap<String, BTreeMap<String, String>>,
@@ -772,8 +772,8 @@ where
 /// Pagination links returned with bulk contents.
 ///
 /// `next`/`prev` arrive as JSON `null` when there is no adjacent page, which
-/// would reject under a plain `String` field; [`null_as_empty_string`] maps
-/// both null and absent to the empty string so the public API stays typed.
+/// would reject under a plain `String` field; null and absent both map to the
+/// empty string so the public API stays typed.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct CrawlerContentsLinks {
     /// Crawled URLs link.

@@ -829,7 +829,7 @@ impl Client {
     /// Scrape a URL with `proxified_response=true`, returning the raw
     /// upstream `reqwest::Response` (target's status, headers, body).
     ///
-    /// Unlike [`scrape()`], no JSON parsing occurs — the response body is
+    /// Unlike [`scrape()`](Self::scrape), no JSON parsing occurs — the response body is
     /// the target page's raw content. Scrapfly metadata is available on
     /// the `X-Scrapfly-*` response headers (`Api-Cost`, `Content-Format`,
     /// `Log`, etc.).

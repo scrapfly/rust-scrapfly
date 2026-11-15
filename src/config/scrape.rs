@@ -24,16 +24,13 @@ pub struct ScrapeConfig {
     pub cookies: BTreeMap<String, String>,
     /// Proxy country.
     pub country: Option<String>,
-    /// Proxy pool: [`ProxyPool::Basic`], [`ProxyPool::Unblocker`],
-    /// [`ProxyPool::UnblockerUltra`] or [`ProxyPool::Auto`], each of which sets
-    /// the Unblocker itself. `None` sends no `proxy_pool`.
+    /// Proxy pool: [`ProxyPool::PublicDatacenterPool`] (the default),
+    /// [`ProxyPool::PublicResidentialPool`] or [`ProxyPool::PublicTorPool`].
+    /// `None` sends no `proxy_pool`.
     pub proxy_pool: Option<ProxyPool>,
     /// Enable JavaScript rendering.
     pub render_js: bool,
-    /// Unblocker (anti-bot bypass) toggle. Deprecated: use
-    /// [`proxy_pool`](Self::proxy_pool) ([`ProxyPool::UnblockerUltra`] for the
-    /// Unblocker). The migration guide covers requests written before the
-    /// proxy pools: <https://scrapfly.io/new-pricing#legacy-spellings>
+    /// Enable the Unblocker (anti-bot bypass).
     ///
     /// The field keeps the deprecated `asp` name on purpose: it is the one
     /// storage slot behind both input names, and renaming a public field
@@ -141,9 +138,6 @@ impl ScrapeConfig {
     /// every Scrapfly SDK: a supplied `asp` wins, and `unblocker` is
     /// consulted only when `asp` was not supplied. The two names are never
     /// OR-ed, so an explicit `false` on either one turns the feature off.
-    /// When [`proxy_pool`](Self::proxy_pool) is `basic`, `unblocker`,
-    /// `unblocker_ultra` or `auto`, the API ignores this value and takes the
-    /// Unblocker from the pool.
     pub fn unblocker_enabled(&self) -> bool {
         self.asp
     }
@@ -398,7 +392,8 @@ impl ScrapeConfigBuilder {
         self.cfg.country = Some(c.into());
         self
     }
-    /// Set the proxy pool (`basic`, `unblocker`, `unblocker_ultra` or `auto`).
+    /// Set the proxy pool (`public_datacenter_pool`, `public_residential_pool`
+    /// or `public_tor_pool`).
     pub fn proxy_pool(mut self, p: ProxyPool) -> Self {
         self.cfg.proxy_pool = Some(p);
         self
@@ -408,19 +403,14 @@ impl ScrapeConfigBuilder {
         self.cfg.render_js = v;
         self
     }
-    /// Unblocker (anti-bot bypass) toggle. Deprecated: use
-    /// [`proxy_pool`](Self::proxy_pool) ([`ProxyPool::UnblockerUltra`] for the
-    /// Unblocker). The migration guide covers requests written before the
-    /// proxy pools: <https://scrapfly.io/new-pricing#legacy-spellings>
+    /// Enable the Unblocker (anti-bot bypass).
     pub fn unblocker(mut self, v: bool) -> Self {
         self.unblocker_input = v;
         self.unblocker_set = true;
         self
     }
-    /// Enable the Unblocker under its deprecated name. Deprecated: use
-    /// [`proxy_pool`](Self::proxy_pool) ([`ProxyPool::UnblockerUltra`] for the
-    /// Unblocker). The migration guide covers requests written before the
-    /// proxy pools: <https://scrapfly.io/new-pricing#legacy-spellings>
+    /// Enable the Unblocker under its deprecated name: use
+    /// [`unblocker`](Self::unblocker).
     ///
     /// When both names are supplied this one wins, in either call order: see
     /// [`ScrapeConfig::unblocker_enabled`].

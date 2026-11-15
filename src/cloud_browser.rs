@@ -9,13 +9,11 @@ use crate::enums::VaultLinkedService;
 use crate::error::{from_response, ScrapflyError};
 
 /// Configuration for a Cloud Browser WebSocket session (passed to
-/// [`cloud_browser_url`]).
+/// [`Client::cloud_browser_url`]).
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct BrowserConfig {
     /// Proxy pool: `datacenter`, `residential` or `tor` (BYOP goes through
-    /// [`byop_proxy`](Self::byop_proxy), and runs as `byop`). The Web Scraping
-    /// API pools `basic`, `unblocker`, `unblocker_ultra` and `auto` are refused
-    /// here with `ERR::BROWSER::CONFIG_ERROR`.
+    /// [`byop_proxy`](Self::byop_proxy), and runs as `byop`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proxy_pool: Option<String>,
     /// OS fingerprint: `linux`, `windows`, `macos`, `android`, `iphone`, `ipad`.

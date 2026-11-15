@@ -5,7 +5,7 @@
 //! [`CloudBrowserDownloads`] reads in chunks with `IO.read`, so no CDP message is larger than one
 //! chunk. Without the option every file comes back inline, and the helpers read that shape too.
 //!
-//! A session is any [`CdpSender`]: the chromiumoxide adapter [`ChromiumoxideCdp`] (feature
+//! A session is any [`CdpSender`]: the chromiumoxide adapter `ChromiumoxideCdp` (feature
 //! `chromiumoxide`), or a closure `Fn(String, Value) -> Future<Output = Result<Value, CdpError>>`
 //! over a CDP client of your own.
 //!

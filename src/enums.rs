@@ -112,18 +112,17 @@ impl ExtractionModel {
     }
 }
 
-/// The `proxy_pool` parameter of the Web Scraping API, the Crawler and the
-/// Screenshot API: [`ProxyPool::Basic`], [`ProxyPool::Unblocker`],
-/// [`ProxyPool::UnblockerUltra`] or [`ProxyPool::Auto`], each of which sets
-/// both the proxies and the Unblocker, or [`ProxyPool::PublicTorPool`], the
-/// Tor network. The Screenshot API takes the first four and ignores any other
-/// value. Cloud Browser has pools of its own (see
+/// The `proxy_pool` parameter of the Web Scraping API and the Crawler:
+/// [`ProxyPool::PublicDatacenterPool`] (the default),
+/// [`ProxyPool::PublicResidentialPool`] or [`ProxyPool::PublicTorPool`]. The
+/// anti-bot bypass is a parameter of its own: the `unblocker` builder method.
+/// Cloud Browser has pools of its own (see
 /// [`BrowserConfig`](crate::BrowserConfig)).
 ///
-/// The pool names written before the proxy pools
-/// ([`ProxyPool::PublicDatacenterPool`], [`ProxyPool::PublicResidentialPool`])
-/// are still accepted. The migration guide covers them:
-/// <https://scrapfly.io/new-pricing#legacy-spellings>
+/// [`ProxyPool::Basic`], [`ProxyPool::Unblocker`],
+/// [`ProxyPool::UnblockerUltra`] and [`ProxyPool::Auto`] name pools the API
+/// does not accept yet: a request naming one fails with
+/// `ERR::PROXY::POOL_NOT_FOUND`.
 ///
 /// Non-exhaustive: the API grows this list, and a new member must not break
 /// a downstream `match`.
@@ -131,25 +130,18 @@ impl ExtractionModel {
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum ProxyPool {
-    /// `basic`: datacenter proxies, Unblocker off.
+    /// `basic`: not accepted by the API yet (`ERR::PROXY::POOL_NOT_FOUND`).
     Basic,
-    /// `unblocker`: residential proxies with the Unblocker (anti-bot bypass)
-    /// on.
+    /// `unblocker`: not accepted by the API yet (`ERR::PROXY::POOL_NOT_FOUND`).
     Unblocker,
-    /// `unblocker_ultra`: residential proxies with the Unblocker on. The only
-    /// pool accepted by the targets and anti-bot protections that have a
-    /// price of their own: those refuse `basic` and `unblocker` with
-    /// `ERR::PROXY::UNBLOCKER_ULTRA_REQUIRED` (HTTP 422, not billed).
+    /// `unblocker_ultra`: not accepted by the API yet
+    /// (`ERR::PROXY::POOL_NOT_FOUND`).
     UnblockerUltra,
-    /// `auto`: the API picks the pool before the request, from the target's
-    /// profile: the Unblocker on datacenter proxies, or the pool the target
-    /// needs. Accepted on every target, the ones that require
-    /// [`ProxyPool::UnblockerUltra`] included, where their price is added;
-    /// priced as the pool it runs on.
+    /// `auto`: not accepted by the API yet (`ERR::PROXY::POOL_NOT_FOUND`).
     Auto,
-    /// Former name of the datacenter pool.
+    /// `public_datacenter_pool`: datacenter proxies, the default pool.
     PublicDatacenterPool,
-    /// Former name of the residential pool.
+    /// `public_residential_pool`: residential proxies.
     PublicResidentialPool,
     /// `public_tor_pool`: egress through the Tor network, the only pool that
     /// reaches .onion hidden services; also used for OSINT.
@@ -170,9 +162,10 @@ impl ProxyPool {
         }
     }
 
-    /// Whether this is one of the pool names written before the proxy pools
-    /// ([`ProxyPool::PublicDatacenterPool`], [`ProxyPool::PublicResidentialPool`]).
-    /// [`ProxyPool::PublicTorPool`] is not one: the Tor pool keeps its name.
+    /// Whether this is [`ProxyPool::PublicDatacenterPool`] or
+    /// [`ProxyPool::PublicResidentialPool`]: pool names older than the four the
+    /// API does not accept yet, and the ones it accepts today.
+    /// [`ProxyPool::PublicTorPool`] is not one.
     pub fn is_legacy(&self) -> bool {
         matches!(
             self,
