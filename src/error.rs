@@ -52,7 +52,7 @@ pub enum ScrapflyError {
     /// Transport-level failure (connect, TLS, timeout …). The request URL it
     /// prints carries `key=REDACTED` in place of the API key.
     #[error("transport: {0}")]
-    Transport(reqwest::Error),
+    Transport(#[source] reqwest::Error),
     /// JSON (de)serialization failure.
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),

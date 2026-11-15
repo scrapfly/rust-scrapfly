@@ -2909,6 +2909,27 @@ async fn a_transport_error_does_not_print_the_key() {
     assert!(shown.contains("key=REDACTED"), "{shown}");
 }
 
+#[tokio::test]
+async fn a_transport_error_keeps_its_cause() {
+    let client = Client::builder()
+        .api_key("scp-live-0123456789abcdef")
+        .host("http://127.0.0.1:1")
+        .build()
+        .expect("client");
+
+    let err = client
+        .account()
+        .await
+        .expect_err("nothing listens on port 1");
+    let source = std::error::Error::source(&err).expect("the reqwest error is the source");
+
+    assert!(
+        source.downcast_ref::<reqwest::Error>().is_some(),
+        "{source:?}"
+    );
+    assert!(!format!("{source} {source:?}").contains("0123456789abcdef"));
+}
+
 /// Serves `/scrape` with a large object envelope, then the object itself, one request per connection.
 async fn serve_large_object(
     listener: tokio::net::TcpListener,
