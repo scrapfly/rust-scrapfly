@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["CrawlerSearchMode"],"struct":["Client","ClientBuilder","CrawlPromptOptions","CrawlRefreshSettings","CrawlSearchOptions"],"type":["OnRequest"]};
+window.SIDEBAR_ITEMS = {"enum":["CrawlerSearchMode"],"struct":["Client","ClientBuilder","CrawlExtractOptions","CrawlPromptOptions","CrawlRefreshSettings","CrawlSearchOptions"],"type":["OnRequest"]};

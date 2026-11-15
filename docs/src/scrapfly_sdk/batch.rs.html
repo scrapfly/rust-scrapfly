@@ -483,31 +483,41 @@
 <a href=#483 id=483 data-nosnippet>483</a>    <span class="prelude-val">Some</span>(<span class="kw">crate</span>::error::from_response(status, <span class="kw-2">&amp;</span>body, <span class="number">0</span>, <span class="bool-val">false</span>))
 <a href=#484 id=484 data-nosnippet>484</a>}
 <a href=#485 id=485 data-nosnippet>485</a>
-<a href=#486 id=486 data-nosnippet>486</a><span class="doccomment">/// Decode a part body according to its Content-Type. Supports
-<a href=#487 id=487 data-nosnippet>487</a>/// `application/json` (default) and `application/msgpack`.
-<a href=#488 id=488 data-nosnippet>488</a></span><span class="kw">pub fn </span>decode_part_body&lt;T: serde::de::DeserializeOwned&gt;(
-<a href=#489 id=489 data-nosnippet>489</a>    part: <span class="kw-2">&amp;</span>BatchPart,
-<a href=#490 id=490 data-nosnippet>490</a>) -&gt; <span class="prelude-ty">Result</span>&lt;T, ScrapflyError&gt; {
-<a href=#491 id=491 data-nosnippet>491</a>    <span class="kw">let </span>ct = part
-<a href=#492 id=492 data-nosnippet>492</a>        .headers
-<a href=#493 id=493 data-nosnippet>493</a>        .get(<span class="string">"content-type"</span>)
-<a href=#494 id=494 data-nosnippet>494</a>        .cloned()
-<a href=#495 id=495 data-nosnippet>495</a>        .unwrap_or_else(|| <span class="string">"application/json"</span>.to_string());
-<a href=#496 id=496 data-nosnippet>496</a>
-<a href=#497 id=497 data-nosnippet>497</a>    <span class="kw">if </span>ct.starts_with(<span class="string">"application/json"</span>) {
-<a href=#498 id=498 data-nosnippet>498</a>        <span class="kw">return </span>serde_json::from_slice::&lt;T&gt;(<span class="kw-2">&amp;</span>part.body)
-<a href=#499 id=499 data-nosnippet>499</a>            .map_err(|e| ScrapflyError::Config(<span class="macro">format!</span>(<span class="string">"scrape_batch: decode JSON part: {}"</span>, e)));
-<a href=#500 id=500 data-nosnippet>500</a>    }
-<a href=#501 id=501 data-nosnippet>501</a>
-<a href=#502 id=502 data-nosnippet>502</a>    <span class="kw">if </span>ct.starts_with(<span class="string">"application/msgpack"</span>) || ct.starts_with(<span class="string">"application/x-msgpack"</span>) {
-<a href=#503 id=503 data-nosnippet>503</a>        <span class="kw">return </span>rmp_serde::from_slice::&lt;T&gt;(<span class="kw-2">&amp;</span>part.body).map_err(|e| {
-<a href=#504 id=504 data-nosnippet>504</a>            ScrapflyError::Config(<span class="macro">format!</span>(<span class="string">"scrape_batch: decode msgpack part: {}"</span>, e))
-<a href=#505 id=505 data-nosnippet>505</a>        });
-<a href=#506 id=506 data-nosnippet>506</a>    }
-<a href=#507 id=507 data-nosnippet>507</a>
-<a href=#508 id=508 data-nosnippet>508</a>    <span class="prelude-val">Err</span>(ScrapflyError::Config(<span class="macro">format!</span>(
-<a href=#509 id=509 data-nosnippet>509</a>        <span class="string">"scrape_batch: unsupported part Content-Type: {:?}"</span>,
-<a href=#510 id=510 data-nosnippet>510</a>        ct
-<a href=#511 id=511 data-nosnippet>511</a>    )))
-<a href=#512 id=512 data-nosnippet>512</a>}
+<a href=#486 id=486 data-nosnippet>486</a><span class="doccomment">/// The part answering a config with a webhook.
+<a href=#487 id=487 data-nosnippet>487</a></span><span class="attr">#[derive(Debug, serde::Deserialize)]
+<a href=#488 id=488 data-nosnippet>488</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct </span>EnqueueAck {
+<a href=#489 id=489 data-nosnippet>489</a>    <span class="doccomment">/// True once the job is in the queue.
+<a href=#490 id=490 data-nosnippet>490</a>    </span><span class="attr">#[serde(default)]
+<a href=#491 id=491 data-nosnippet>491</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) enqueued: bool,
+<a href=#492 id=492 data-nosnippet>492</a>    <span class="doccomment">/// The scrape's answer.
+<a href=#493 id=493 data-nosnippet>493</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) result: <span class="kw">crate</span>::result::scrape::ScrapeResult,
+<a href=#494 id=494 data-nosnippet>494</a>}
+<a href=#495 id=495 data-nosnippet>495</a>
+<a href=#496 id=496 data-nosnippet>496</a><span class="doccomment">/// Decode a part body according to its Content-Type. Supports
+<a href=#497 id=497 data-nosnippet>497</a>/// `application/json` (default) and `application/msgpack`.
+<a href=#498 id=498 data-nosnippet>498</a></span><span class="kw">pub fn </span>decode_part_body&lt;T: serde::de::DeserializeOwned&gt;(
+<a href=#499 id=499 data-nosnippet>499</a>    part: <span class="kw-2">&amp;</span>BatchPart,
+<a href=#500 id=500 data-nosnippet>500</a>) -&gt; <span class="prelude-ty">Result</span>&lt;T, ScrapflyError&gt; {
+<a href=#501 id=501 data-nosnippet>501</a>    <span class="kw">let </span>ct = part
+<a href=#502 id=502 data-nosnippet>502</a>        .headers
+<a href=#503 id=503 data-nosnippet>503</a>        .get(<span class="string">"content-type"</span>)
+<a href=#504 id=504 data-nosnippet>504</a>        .cloned()
+<a href=#505 id=505 data-nosnippet>505</a>        .unwrap_or_else(|| <span class="string">"application/json"</span>.to_string());
+<a href=#506 id=506 data-nosnippet>506</a>
+<a href=#507 id=507 data-nosnippet>507</a>    <span class="kw">if </span>ct.starts_with(<span class="string">"application/json"</span>) {
+<a href=#508 id=508 data-nosnippet>508</a>        <span class="kw">return </span>serde_json::from_slice::&lt;T&gt;(<span class="kw-2">&amp;</span>part.body)
+<a href=#509 id=509 data-nosnippet>509</a>            .map_err(|e| ScrapflyError::Config(<span class="macro">format!</span>(<span class="string">"scrape_batch: decode JSON part: {}"</span>, e)));
+<a href=#510 id=510 data-nosnippet>510</a>    }
+<a href=#511 id=511 data-nosnippet>511</a>
+<a href=#512 id=512 data-nosnippet>512</a>    <span class="kw">if </span>ct.starts_with(<span class="string">"application/msgpack"</span>) || ct.starts_with(<span class="string">"application/x-msgpack"</span>) {
+<a href=#513 id=513 data-nosnippet>513</a>        <span class="kw">return </span>rmp_serde::from_slice::&lt;T&gt;(<span class="kw-2">&amp;</span>part.body).map_err(|e| {
+<a href=#514 id=514 data-nosnippet>514</a>            ScrapflyError::Config(<span class="macro">format!</span>(<span class="string">"scrape_batch: decode msgpack part: {}"</span>, e))
+<a href=#515 id=515 data-nosnippet>515</a>        });
+<a href=#516 id=516 data-nosnippet>516</a>    }
+<a href=#517 id=517 data-nosnippet>517</a>
+<a href=#518 id=518 data-nosnippet>518</a>    <span class="prelude-val">Err</span>(ScrapflyError::Config(<span class="macro">format!</span>(
+<a href=#519 id=519 data-nosnippet>519</a>        <span class="string">"scrape_batch: unsupported part Content-Type: {:?}"</span>,
+<a href=#520 id=520 data-nosnippet>520</a>        ct
+<a href=#521 id=521 data-nosnippet>521</a>    )))
+<a href=#522 id=522 data-nosnippet>522</a>}
 </code></pre></div></section></main></body></html>

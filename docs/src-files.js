@@ -1,2 +1,2 @@
-createSrcSidebar('[["scrapfly_sdk",["",[["config",[],["crawler.rs","extraction.rs","mod.rs","scrape.rs","screenshot.rs"]],["result",[],["account.rs","classify.rs","crawler.rs","extraction.rs","mod.rs","scrape.rs","screenshot.rs"]]],["batch.rs","client.rs","cloud_browser.rs","crawler.rs","enums.rs","error.rs","lib.rs","monitoring.rs","schedule.rs"]]]]');
-//{"start":19,"fragment_lengths":[332]}
+createSrcSidebar('[["scrapfly_sdk",["",[["config",[],["crawler.rs","extraction.rs","mod.rs","scrape.rs","screenshot.rs"]],["result",[],["account.rs","classify.rs","crawler.rs","extraction.rs","mod.rs","scrape.rs","screenshot.rs"]]],["batch.rs","client.rs","cloud_browser.rs","cloud_browser_downloads.rs","crawler.rs","enums.rs","error.rs","lib.rs","monitoring.rs","schedule.rs"]]]]');
+//{"start":19,"fragment_lengths":[361]}

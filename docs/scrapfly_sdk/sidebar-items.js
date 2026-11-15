@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["batch","client","cloud_browser","config","crawler","enums","error","monitoring","result","schedule"]};
+window.SIDEBAR_ITEMS = {"mod":["batch","client","cloud_browser","cloud_browser_downloads","config","crawler","enums","error","monitoring","result","schedule"]};

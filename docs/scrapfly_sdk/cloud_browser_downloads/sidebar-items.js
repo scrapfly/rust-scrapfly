@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["DEFAULT_CHUNK_SIZE","MAX_CHUNK_SIZE"],"enum":["DownloadError"],"fn":["parse_downloads"],"struct":["BrowserDownload","ChromiumoxideCdp","CloudBrowserDownloads"],"trait":["CdpSender"],"type":["CdpError"]};
