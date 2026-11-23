@@ -43,9 +43,9 @@ const DEFAULT_RETRY_DELAY: Duration = Duration::from_secs(1);
 /// The Scrape API holds a request up to 155s and asks clients to read that
 /// long; 160s leaves a margin, as the Python SDK does.
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(160);
-/// Deadline for the `/crawl/prompt` SSE exchange. It has to clear the API's
-/// own 165s ceiling (retrieval plus up to 150s of generation), which
-/// [`DEFAULT_TIMEOUT`] does not.
+/// The client allows 180 seconds for a `/crawl/prompt` or `/crawl/extract`
+/// request, including the response body. The API allows 150 seconds for
+/// retrieval and generation together.
 const CRAWL_PROMPT_STREAM_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// Request-inspection callback. Fires right before `send()`.
@@ -1773,12 +1773,12 @@ impl Client {
         req.send().await.map_err(ScrapflyError::from)
     }
 
-    /// Single-shot send, no retry (for `verify_api_key`/`account` style calls).
-    /// Send the prompt request with a deadline that outlives the server's own
-    /// budget. `reqwest`'s client timeout covers the response body, so the
-    /// 160s default would cut a legitimate SSE stream mid-answer: the API
-    /// allows retrieval plus up to 150s of generation under a 165s ceiling.
-    /// The per-request override leaves every other call's deadline alone.
+    /// Send a crawler prompt or extraction request once.
+    ///
+    /// Prompts can return a stream of server-sent events or a single JSON
+    /// response. Extraction returns JSON. The request timeout covers the body
+    /// in both formats, including the wait for the final event of a stream.
+    /// Callers read the response body after this method returns.
     async fn send_prompt_stream(
         &self,
         url: Url,
