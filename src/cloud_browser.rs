@@ -87,8 +87,9 @@ pub struct BrowserConfig {
     pub enable_mcp: bool,
     /// Arm Scrapfly's built-in captcha detector + solver on the first page attach.
     /// Turnstile, DataDome slider, reCAPTCHA, GeeTest, PerimeterX hold, and
-    /// puzzle captchas are handled automatically. Billed per solve; failures
-    /// cost nothing. See <https://scrapfly.io/docs/cloud-browser-api/captcha-solver>.
+    /// puzzle captchas are handled automatically. Billed per solve; a failure
+    /// costs nothing unless the captcha's solve had started. See
+    /// <https://scrapfly.io/docs/cloud-browser-api/captcha-solver>.
     #[serde(skip_serializing_if = "is_false")]
     pub solve_captcha: bool,
     /// Cloud Browser credential vault NAME to attach to the session — the

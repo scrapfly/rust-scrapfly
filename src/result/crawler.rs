@@ -60,7 +60,12 @@ pub struct CrawlerState {
     /// Stop time (Unix seconds, null until terminal).
     #[serde(default)]
     pub stop_time: Option<i64>,
-    /// Documented stop reason (null while running).
+    /// Why the crawl stopped (null while running): `backlog_empty` or
+    /// `retry_backlog_only` when it crawled everything, a limit (`page_limit`,
+    /// `max_duration_reached`, `max_api_credit`), `crawler_error`,
+    /// `seed_url_failed`, `user_cancelled`, and so on. A stop on a limit or on
+    /// `crawler_error` after a visited page keeps its pages and ends with
+    /// `is_success` true; a stop on `max_api_credit` is a success.
     #[serde(default)]
     pub stop_reason: Option<String>,
 }
