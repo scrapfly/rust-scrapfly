@@ -72,7 +72,7 @@ pub struct BrowserConfig {
     /// Strongly recommended. Routing is decided once, when the session opens, so
     /// a session declared without a target cannot be re-routed afterwards.
     ///
-    /// Must be an absolute URL including the scheme (`https://example.com`); a
+    /// Must be an absolute URL including the scheme (`https://web-scraping.dev`); a
     /// bare hostname is rejected server-side.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_url: Option<String>,
@@ -773,7 +773,7 @@ impl Client {
     /// {
     ///   "type": "password",
     ///   "label": "...",
-    ///   "origin": "https://example.com",
+    ///   "origin": "https://web-scraping.dev",
     ///   "username": "user",
     ///   "secret": {"password": "hunter2"}
     /// }

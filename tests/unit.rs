@@ -12,7 +12,7 @@ use scrapfly_sdk::{
 
 #[test]
 fn scrape_config_query_pairs_basic() {
-    let cfg = ScrapeConfig::builder("https://example.com")
+    let cfg = ScrapeConfig::builder("https://web-scraping.dev")
         .render_js(true)
         .asp(true)
         .country("US")
@@ -24,7 +24,10 @@ fn scrape_config_query_pairs_basic() {
         .expect("build");
     let pairs = cfg.to_query_pairs().expect("pairs");
     let as_map: std::collections::HashMap<_, _> = pairs.iter().cloned().collect();
-    assert_eq!(as_map.get("url"), Some(&"https://example.com".to_string()));
+    assert_eq!(
+        as_map.get("url"),
+        Some(&"https://web-scraping.dev".to_string())
+    );
     assert_eq!(as_map.get("render_js"), Some(&"true".to_string()));
     assert_eq!(as_map.get("asp"), Some(&"true".to_string()));
     assert_eq!(as_map.get("country"), Some(&"us".to_string()));
@@ -35,7 +38,7 @@ fn scrape_config_query_pairs_basic() {
 
 #[test]
 fn scrape_config_cookie_merges_with_existing_cookie_header() {
-    let cfg = ScrapeConfig::builder("https://example.com")
+    let cfg = ScrapeConfig::builder("https://web-scraping.dev")
         .header("Cookie", "existing=1")
         .cookie("sid", "abc")
         .build()
@@ -52,7 +55,7 @@ fn scrape_config_cookie_merges_with_existing_cookie_header() {
 
 #[test]
 fn scrape_config_js_base64() {
-    let cfg = ScrapeConfig::builder("https://example.com")
+    let cfg = ScrapeConfig::builder("https://web-scraping.dev")
         .render_js(true)
         .js("window.foo = 1;")
         .build()
@@ -71,7 +74,7 @@ fn scrape_config_js_base64() {
 
 #[test]
 fn scrape_config_extraction_mutual_exclusion() {
-    let err = ScrapeConfig::builder("https://example.com")
+    let err = ScrapeConfig::builder("https://web-scraping.dev")
         .extraction_prompt("x")
         .extraction_template("y")
         .build()
@@ -81,12 +84,12 @@ fn scrape_config_extraction_mutual_exclusion() {
 
 #[test]
 fn crawler_bounds_max_duration_out_of_range() {
-    let err = CrawlerConfig::builder("https://x.com")
+    let err = CrawlerConfig::builder("https://web-scraping.dev")
         .max_duration(5)
         .build()
         .err();
     assert!(matches!(err, Some(ScrapflyError::Config(_))));
-    let err = CrawlerConfig::builder("https://x.com")
+    let err = CrawlerConfig::builder("https://web-scraping.dev")
         .max_duration(99999)
         .build()
         .err();
@@ -95,7 +98,7 @@ fn crawler_bounds_max_duration_out_of_range() {
 
 #[test]
 fn crawler_bounds_rendering_delay() {
-    let err = CrawlerConfig::builder("https://x.com")
+    let err = CrawlerConfig::builder("https://web-scraping.dev")
         .rendering_delay(30000)
         .build()
         .err();
@@ -105,7 +108,7 @@ fn crawler_bounds_rendering_delay() {
 #[test]
 fn crawler_bounds_exclude_paths_limit() {
     let paths: Vec<String> = (0..101).map(|i| format!("/p{}", i)).collect();
-    let err = CrawlerConfig::builder("https://x.com")
+    let err = CrawlerConfig::builder("https://web-scraping.dev")
         .exclude_paths(paths)
         .build()
         .err();
@@ -114,20 +117,21 @@ fn crawler_bounds_exclude_paths_limit() {
 
 #[test]
 fn crawler_urls_parse_visited() {
-    let body = "https://a.com/1\nhttps://a.com/2\n\nhttps://a.com/3\n";
+    let body =
+        "https://web-scraping.dev/1\nhttps://web-scraping.dev/2\n\nhttps://web-scraping.dev/3\n";
     let parsed = CrawlerUrls::from_text(body, "visited", 1, 100);
     assert_eq!(parsed.urls.len(), 3);
-    assert_eq!(parsed.urls[0].url, "https://a.com/1");
+    assert_eq!(parsed.urls[0].url, "https://web-scraping.dev/1");
     assert_eq!(parsed.urls[0].status, "visited");
     assert_eq!(parsed.urls[0].reason, "");
 }
 
 #[test]
 fn crawler_urls_parse_failed_with_reason() {
-    let body = "https://a.com/1,connect timeout\nhttps://a.com/2,dns error\n";
+    let body = "https://web-scraping.dev/1,connect timeout\nhttps://web-scraping.dev/2,dns error\n";
     let parsed = CrawlerUrls::from_text(body, "failed", 2, 50);
     assert_eq!(parsed.urls.len(), 2);
-    assert_eq!(parsed.urls[0].url, "https://a.com/1");
+    assert_eq!(parsed.urls[0].url, "https://web-scraping.dev/1");
     assert_eq!(parsed.urls[0].reason, "connect timeout");
     assert_eq!(parsed.page, 2);
     assert_eq!(parsed.per_page, 50);
@@ -171,7 +175,7 @@ fn error_classifier_5xx() {
 fn session_sticky_proxy_false_is_sent() {
     // false must reach the wire — omitting it lets the API default to
     // sticky=true with a session, so the user could never disable it.
-    let cfg = ScrapeConfig::builder("https://example.com")
+    let cfg = ScrapeConfig::builder("https://web-scraping.dev")
         .session("s1")
         .session_sticky_proxy(false)
         .build()
@@ -186,7 +190,7 @@ fn session_sticky_proxy_false_is_sent() {
 
 #[test]
 fn session_sticky_proxy_true_is_sent() {
-    let cfg = ScrapeConfig::builder("https://example.com")
+    let cfg = ScrapeConfig::builder("https://web-scraping.dev")
         .session("s1")
         .session_sticky_proxy(true)
         .build()
@@ -203,7 +207,7 @@ fn session_sticky_proxy_true_is_sent() {
 fn session_sticky_proxy_default_is_true() {
     // Builder defaults sticky on; a session config that never sets it must
     // still send true (matches the API default).
-    let cfg = ScrapeConfig::builder("https://example.com")
+    let cfg = ScrapeConfig::builder("https://web-scraping.dev")
         .session("s1")
         .build()
         .expect("build");
@@ -217,7 +221,7 @@ fn session_sticky_proxy_default_is_true() {
 
 #[test]
 fn session_sticky_proxy_omitted_without_session() {
-    let cfg = ScrapeConfig::builder("https://example.com")
+    let cfg = ScrapeConfig::builder("https://web-scraping.dev")
         .session_sticky_proxy(true)
         .build()
         .expect("build");
@@ -364,7 +368,7 @@ fn cloud_browser_url_omits_target_url_when_unset() {
 
 #[test]
 fn crawler_search_serializes_to_wire_payload() {
-    let cfg = CrawlerConfig::builder("https://example.com")
+    let cfg = CrawlerConfig::builder("https://web-scraping.dev")
         .search(true)
         .build()
         .expect("valid config");
@@ -376,7 +380,7 @@ fn crawler_search_serializes_to_wire_payload() {
 #[test]
 fn crawler_search_omitted_when_off() {
     // Unset means server default: never emit a field to send its default.
-    let cfg = CrawlerConfig::builder("https://example.com")
+    let cfg = CrawlerConfig::builder("https://web-scraping.dev")
         .build()
         .expect("valid config");
     let body: serde_json::Value =
@@ -386,7 +390,7 @@ fn crawler_search_omitted_when_off() {
 
 #[test]
 fn crawler_search_webhook_events_round_trip() {
-    let cfg = CrawlerConfig::builder("https://example.com")
+    let cfg = CrawlerConfig::builder("https://web-scraping.dev")
         .webhook_name("hook")
         .webhook_event(CrawlerWebhookEvent::CrawlerSearchReady)
         .webhook_event(CrawlerWebhookEvent::CrawlerSearchFailed)
@@ -423,7 +427,7 @@ fn crawler_search_webhook_events_deserialize() {
 
 #[test]
 fn crawler_updated_webhook_event_round_trips() {
-    let cfg = CrawlerConfig::builder("https://example.com")
+    let cfg = CrawlerConfig::builder("https://web-scraping.dev")
         .webhook_name("hook")
         .webhook_event(CrawlerWebhookEvent::CrawlerUpdated)
         .build()
@@ -456,7 +460,7 @@ fn crawler_search_response_parses_the_envelope() {
       "results": [{
         "rank": 1, "score": 0.927,
         "scores": {"vector": 0.91, "fts": 12.4, "rrf": 0.0312},
-        "crawler_uuid": "0198aaaa", "url": "https://example.com/foo", "title": "Foo Product",
+        "crawler_uuid": "0198aaaa", "url": "https://web-scraping.dev/foo", "title": "Foo Product",
         "source_format": "markdown", "content_type": "application/markdown",
         "chunk_id": 3, "text": "the matched chunk",
         "warc_offset": 728271, "warc_end": 746643,
@@ -470,7 +474,7 @@ fn crawler_search_response_parses_the_envelope() {
 
     assert!(parsed.is_exact());
     assert_eq!(parsed.results.len(), 1);
-    assert_eq!(parsed.results[0].url, "https://example.com/foo");
+    assert_eq!(parsed.results[0].url, "https://web-scraping.dev/foo");
     assert_eq!(parsed.results[0].scores.rrf, Some(0.0312));
     assert_eq!(parsed.results[0].warc_end, Some(746643));
     assert_eq!(parsed.skipped[0].reason, "search_not_ready");
@@ -593,7 +597,7 @@ async fn crawl_search_options_reject_a_non_object_filter_before_any_request() {
     let opts = CrawlSearchOptions {
         limit: Some(20),
         mode: Some(CrawlerSearchMode::Hybrid),
-        filters: Some(serde_json::json!({"url_prefix": "https://example.com/docs/"})),
+        filters: Some(serde_json::json!({"url_prefix": "https://web-scraping.dev/docs/"})),
         cursor: Some("abc".into()),
     };
     let err = client.crawls_search(&ids, "q", Some(&opts)).await.err();
@@ -602,7 +606,7 @@ async fn crawl_search_options_reject_a_non_object_filter_before_any_request() {
 
 #[test]
 fn crawler_refresh_serializes_to_wire_payload() {
-    let cfg = CrawlerConfig::builder("https://example.com")
+    let cfg = CrawlerConfig::builder("https://web-scraping.dev")
         .refresh(true)
         .refresh_interval(86400)
         .build()
@@ -616,7 +620,7 @@ fn crawler_refresh_serializes_to_wire_payload() {
 #[test]
 fn crawler_refresh_omitted_when_off() {
     // Unset means server default: never emit a field to send its default.
-    let cfg = CrawlerConfig::builder("https://example.com")
+    let cfg = CrawlerConfig::builder("https://web-scraping.dev")
         .build()
         .expect("valid config");
     let body: serde_json::Value =
@@ -625,7 +629,7 @@ fn crawler_refresh_omitted_when_off() {
     assert!(body.get("refresh_interval").is_none());
 
     // Refresh on with no interval leaves the server period alone.
-    let cfg = CrawlerConfig::builder("https://example.com")
+    let cfg = CrawlerConfig::builder("https://web-scraping.dev")
         .refresh(true)
         .build()
         .expect("valid config");
@@ -639,7 +643,7 @@ fn crawler_refresh_omitted_when_off() {
 fn crawler_refresh_interval_bounds_are_enforced() {
     // The floor decides the cost; reject before a round trip.
     for interval in [1u32, REFRESH_MIN_INTERVAL - 1, REFRESH_MAX_INTERVAL + 1] {
-        let err = CrawlerConfig::builder("https://example.com")
+        let err = CrawlerConfig::builder("https://web-scraping.dev")
             .refresh(true)
             .refresh_interval(interval)
             .build()
@@ -652,7 +656,7 @@ fn crawler_refresh_interval_bounds_are_enforced() {
     }
     for interval in [REFRESH_MIN_INTERVAL, 86400, REFRESH_MAX_INTERVAL] {
         assert!(
-            CrawlerConfig::builder("https://example.com")
+            CrawlerConfig::builder("https://web-scraping.dev")
                 .refresh(true)
                 .refresh_interval(interval)
                 .build()
@@ -662,7 +666,7 @@ fn crawler_refresh_interval_bounds_are_enforced() {
         );
     }
     // A period with the feature off would silently never run.
-    let err = CrawlerConfig::builder("https://example.com")
+    let err = CrawlerConfig::builder("https://web-scraping.dev")
         .refresh_interval(86400)
         .build()
         .err();
@@ -679,7 +683,7 @@ fn crawler_status_parses_the_refresh_block() {
                   "started_at": null, "consecutive_failures": 0,
                   "history": [{"at": "2026-09-01T04:00:00Z", "generation": 2, "added": 3,
                                "updated": 7, "removed": 1, "unchanged": 404,
-                               "sample_removed": ["https://example.com/old"]}]}
+                               "sample_removed": ["https://web-scraping.dev/old"]}]}
     }"#;
     let parsed: CrawlerStatus = serde_json::from_slice(body).expect("valid status");
     let refresh = parsed.refresh.expect("refresh block present");
@@ -692,7 +696,7 @@ fn crawler_status_parses_the_refresh_block() {
     let last = refresh.last_run().expect("one run recorded");
     assert_eq!(last.changed(), 11);
     assert_eq!(last.unchanged, 404);
-    assert_eq!(last.sample_removed, vec!["https://example.com/old"]);
+    assert_eq!(last.sample_removed, vec!["https://web-scraping.dev/old"]);
 }
 
 #[test]
@@ -963,7 +967,7 @@ async fn crawl_refresh_settings_disable_does_not_leak_an_interval() {
 /// tokens, then one terminal `done`.
 const PROMPT_STREAM_BODY: &str = concat!(
     "event: source\n",
-    "data: {\"id\": 1, \"crawler_uuid\": \"0198aaaa\", \"url\": \"https://example.com/foo\", \"title\": \"Foo\", \"score\": 0.91}\n",
+    "data: {\"id\": 1, \"crawler_uuid\": \"0198aaaa\", \"url\": \"https://web-scraping.dev/foo\", \"title\": \"Foo\", \"score\": 0.91}\n",
     "\n",
     "event: token\n",
     "data: \"Foo \"\n",
@@ -1017,7 +1021,7 @@ async fn crawl_prompt_done_frame_keeps_public_fields_and_drops_provider_details(
     assert!(raw.starts_with("POST /crawl/prompt"), "raw: {}", raw);
 
     assert_eq!(sources.len(), 1);
-    assert_eq!(sources[0].url, "https://example.com/foo");
+    assert_eq!(sources[0].url, "https://web-scraping.dev/foo");
     assert_eq!(answer, "Foo is a product.");
 
     let done = done.expect("terminal done frame");
@@ -1411,7 +1415,7 @@ fn crawler_webhook_decodes_the_lifecycle_deliveries() {
     ] {
         let body = format!(
             r#"{{"event": "{}", "payload": {{"crawler_uuid": "abc", "project": "default",
-                 "env": "TEST", "action": "finished", "seed_url": "https://example.com",
+                 "env": "TEST", "action": "finished", "seed_url": "https://web-scraping.dev",
                  "state": {{"urls_visited": 3, "urls_failed": 1}},
                  "links": {{"status": "https://api.scrapfly.io/crawl/abc/status"}}}}}}"#,
             event
@@ -1430,7 +1434,7 @@ fn crawler_webhook_decodes_the_search_deliveries_without_an_action() {
     let body = br#"{
       "event": "crawler_search_ready",
       "payload": {"crawler_uuid": "abc", "project": "default", "env": "LIVE",
-                  "seed_url": "https://example.com",
+                  "seed_url": "https://web-scraping.dev",
                   "state": {"urls_visited": 5},
                   "links": {"status": "https://api.scrapfly.io/crawl/abc/status"},
                   "search": {"status": "READY", "documents": 5, "vectors": 41,
@@ -1464,7 +1468,7 @@ fn crawler_webhook_decodes_a_failed_url_with_a_null_log_link() {
       "event": "crawler_url_failed",
       "payload": {"crawler_uuid": "abc", "project": "default", "env": "LIVE",
                   "action": "failed", "state": {"urls_failed": 1},
-                  "url": "https://example.com/gone",
+                  "url": "https://web-scraping.dev/gone",
                   "error": "ERR::SCRAPE::BAD_UPSTREAM_RESPONSE",
                   "scrape_config": {"render_js": true, "country": "us"},
                   "links": {"log": null}}
@@ -1488,7 +1492,7 @@ fn crawler_webhook_decodes_the_url_deliveries() {
       "event": "crawler_url_visited",
       "payload": {"crawler_uuid": "abc", "project": "default", "env": "LIVE",
                   "action": "visited", "state": {"urls_visited": 1},
-                  "url": "https://example.com/a",
+                  "url": "https://web-scraping.dev/a",
                   "scrape": {"status_code": 200, "country": "us",
                              "content": {"markdown": "# a", "extracted_data": null}}}
     }"##;
@@ -1505,25 +1509,25 @@ fn crawler_webhook_decodes_the_url_deliveries() {
     let skipped = br#"{
       "event": "crawler_url_skipped",
       "payload": {"crawler_uuid": "abc", "state": {},
-                  "urls": {"https://example.com/b": "page_limit"}}
+                  "urls": {"https://web-scraping.dev/b": "page_limit"}}
     }"#;
     let webhook = CrawlerWebhook::from_slice(skipped).expect("known event");
     let CrawlerWebhook::CrawlerUrlSkipped(payload) = webhook else {
         panic!("crawler_url_skipped must decode into its own payload");
     };
-    assert_eq!(payload.urls["https://example.com/b"], "page_limit");
+    assert_eq!(payload.urls["https://web-scraping.dev/b"], "page_limit");
 
     let discovered = br#"{
       "event": "crawler_url_discovered",
       "payload": {"crawler_uuid": "abc", "state": {},
-                  "origin": "https://example.com/",
+                  "origin": "https://web-scraping.dev/",
                   "discovered_urls": null}
     }"#;
     let webhook = CrawlerWebhook::from_slice(discovered).expect("known event");
     let CrawlerWebhook::CrawlerUrlDiscovered(payload) = webhook else {
         panic!("crawler_url_discovered must decode into its own payload");
     };
-    assert_eq!(payload.origin, "https://example.com/");
+    assert_eq!(payload.origin, "https://web-scraping.dev/");
     assert!(payload.discovered_urls.is_empty());
 }
 
@@ -1557,7 +1561,7 @@ fn crawl_body(cfg: &CrawlerConfig) -> serde_json::Value {
 
 #[test]
 fn scrape_unblocker_is_sent_under_the_asp_wire_key() {
-    let cfg = ScrapeConfig::builder("https://example.com")
+    let cfg = ScrapeConfig::builder("https://web-scraping.dev")
         .unblocker(true)
         .build()
         .expect("build");
@@ -1570,7 +1574,7 @@ fn scrape_unblocker_is_sent_under_the_asp_wire_key() {
 
 #[test]
 fn scrape_asp_alias_is_still_sent_under_the_asp_wire_key() {
-    let cfg = ScrapeConfig::builder("https://example.com")
+    let cfg = ScrapeConfig::builder("https://web-scraping.dev")
         .asp(true)
         .build()
         .expect("build");
@@ -1581,7 +1585,7 @@ fn scrape_asp_alias_is_still_sent_under_the_asp_wire_key() {
 
 #[test]
 fn scrape_build_collapses_both_names_onto_one_decision() {
-    let cfg = ScrapeConfig::builder("https://example.com")
+    let cfg = ScrapeConfig::builder("https://web-scraping.dev")
         .unblocker(true)
         .build()
         .expect("build");
@@ -1595,12 +1599,12 @@ fn scrape_build_collapses_both_names_onto_one_decision() {
 #[test]
 fn scrape_explicit_asp_false_vetoes_unblocker_true_in_either_order() {
     for cfg in [
-        ScrapeConfig::builder("https://example.com")
+        ScrapeConfig::builder("https://web-scraping.dev")
             .unblocker(true)
             .asp(false)
             .build()
             .expect("build"),
-        ScrapeConfig::builder("https://example.com")
+        ScrapeConfig::builder("https://web-scraping.dev")
             .asp(false)
             .unblocker(true)
             .build()
@@ -1614,12 +1618,12 @@ fn scrape_explicit_asp_false_vetoes_unblocker_true_in_either_order() {
 #[test]
 fn scrape_explicit_asp_true_wins_over_unblocker_false_in_either_order() {
     for cfg in [
-        ScrapeConfig::builder("https://example.com")
+        ScrapeConfig::builder("https://web-scraping.dev")
             .unblocker(false)
             .asp(true)
             .build()
             .expect("build"),
-        ScrapeConfig::builder("https://example.com")
+        ScrapeConfig::builder("https://web-scraping.dev")
             .asp(true)
             .unblocker(false)
             .build()
@@ -1632,7 +1636,7 @@ fn scrape_explicit_asp_true_wins_over_unblocker_false_in_either_order() {
 
 #[test]
 fn scrape_unblocker_false_leaves_the_feature_off() {
-    let cfg = ScrapeConfig::builder("https://example.com")
+    let cfg = ScrapeConfig::builder("https://web-scraping.dev")
         .unblocker(false)
         .build()
         .expect("build");
@@ -1641,7 +1645,7 @@ fn scrape_unblocker_false_leaves_the_feature_off() {
 
 #[test]
 fn scrape_neither_name_leaves_the_feature_off() {
-    let cfg = ScrapeConfig::builder("https://example.com")
+    let cfg = ScrapeConfig::builder("https://web-scraping.dev")
         .build()
         .expect("build");
     assert_eq!(scrape_pairs(&cfg).get("asp"), None);
@@ -1653,7 +1657,7 @@ fn scrape_unblocker_works_on_the_struct_literal_path() {
     // `unblocker` field: two fields could disagree, and then neither name
     // alone could turn the feature off.
     let cfg = ScrapeConfig {
-        url: "https://example.com".to_string(),
+        url: "https://web-scraping.dev".to_string(),
         asp: true,
         ..Default::default()
     };
@@ -1667,7 +1671,7 @@ fn scrape_disabling_after_build_turns_the_feature_off_under_either_name() {
     // customer code. Whichever name the caller reaches for, the write has to
     // land on the same slot the serializer reads, or the paid feature stays
     // on and is billed against an explicit opt-out.
-    let mut legacy = ScrapeConfig::builder("https://example.com")
+    let mut legacy = ScrapeConfig::builder("https://web-scraping.dev")
         .asp(true)
         .build()
         .expect("build");
@@ -1675,7 +1679,7 @@ fn scrape_disabling_after_build_turns_the_feature_off_under_either_name() {
     assert!(!legacy.unblocker_enabled());
     assert_eq!(scrape_pairs(&legacy).get("asp"), None);
 
-    let mut current = ScrapeConfig::builder("https://example.com")
+    let mut current = ScrapeConfig::builder("https://web-scraping.dev")
         .unblocker(true)
         .build()
         .expect("build");
@@ -1684,7 +1688,7 @@ fn scrape_disabling_after_build_turns_the_feature_off_under_either_name() {
     assert_eq!(scrape_pairs(&current).get("asp"), None);
 
     // Clone-and-tweak off a template hits the same path.
-    let template = ScrapeConfig::builder("https://example.com")
+    let template = ScrapeConfig::builder("https://web-scraping.dev")
         .unblocker(true)
         .build()
         .expect("build");
@@ -1700,7 +1704,7 @@ fn scrape_disabling_after_build_turns_the_feature_off_under_either_name() {
 
 #[test]
 fn scrape_enabling_after_build_turns_the_feature_on_under_either_name() {
-    let mut by_field = ScrapeConfig::builder("https://example.com")
+    let mut by_field = ScrapeConfig::builder("https://web-scraping.dev")
         .build()
         .expect("build");
     by_field.asp = true;
@@ -1709,7 +1713,7 @@ fn scrape_enabling_after_build_turns_the_feature_on_under_either_name() {
         Some(&"true".to_string())
     );
 
-    let mut by_setter = ScrapeConfig::builder("https://example.com")
+    let mut by_setter = ScrapeConfig::builder("https://web-scraping.dev")
         .build()
         .expect("build");
     by_setter.set_unblocker(true);
@@ -1723,14 +1727,14 @@ fn scrape_enabling_after_build_turns_the_feature_on_under_either_name() {
 #[test]
 fn scrape_asp_literal_still_works_and_defaults_stay_off() {
     let on = ScrapeConfig {
-        url: "https://example.com".to_string(),
+        url: "https://web-scraping.dev".to_string(),
         asp: true,
         ..Default::default()
     };
     assert_eq!(scrape_pairs(&on).get("asp"), Some(&"true".to_string()));
 
     let off = ScrapeConfig {
-        url: "https://example.com".to_string(),
+        url: "https://web-scraping.dev".to_string(),
         ..Default::default()
     };
     assert_eq!(scrape_pairs(&off).get("asp"), None);
@@ -1738,7 +1742,7 @@ fn scrape_asp_literal_still_works_and_defaults_stay_off() {
 
 #[test]
 fn crawler_unblocker_is_sent_under_the_asp_body_key() {
-    let cfg = CrawlerConfig::builder("https://example.com")
+    let cfg = CrawlerConfig::builder("https://web-scraping.dev")
         .unblocker(true)
         .build()
         .expect("build");
@@ -1750,7 +1754,7 @@ fn crawler_unblocker_is_sent_under_the_asp_body_key() {
 
 #[test]
 fn crawler_asp_alias_is_still_sent_under_the_asp_body_key() {
-    let cfg = CrawlerConfig::builder("https://example.com")
+    let cfg = CrawlerConfig::builder("https://web-scraping.dev")
         .asp(true)
         .build()
         .expect("build");
@@ -1762,12 +1766,12 @@ fn crawler_asp_alias_is_still_sent_under_the_asp_body_key() {
 #[test]
 fn crawler_explicit_asp_false_vetoes_unblocker_true_in_either_order() {
     for cfg in [
-        CrawlerConfig::builder("https://example.com")
+        CrawlerConfig::builder("https://web-scraping.dev")
             .unblocker(true)
             .asp(false)
             .build()
             .expect("build"),
-        CrawlerConfig::builder("https://example.com")
+        CrawlerConfig::builder("https://web-scraping.dev")
             .asp(false)
             .unblocker(true)
             .build()
@@ -1781,12 +1785,12 @@ fn crawler_explicit_asp_false_vetoes_unblocker_true_in_either_order() {
 #[test]
 fn crawler_explicit_asp_true_wins_over_unblocker_false_in_either_order() {
     for cfg in [
-        CrawlerConfig::builder("https://example.com")
+        CrawlerConfig::builder("https://web-scraping.dev")
             .unblocker(false)
             .asp(true)
             .build()
             .expect("build"),
-        CrawlerConfig::builder("https://example.com")
+        CrawlerConfig::builder("https://web-scraping.dev")
             .asp(true)
             .unblocker(false)
             .build()
@@ -1799,7 +1803,7 @@ fn crawler_explicit_asp_true_wins_over_unblocker_false_in_either_order() {
 
 #[test]
 fn crawler_unblocker_off_omits_the_key() {
-    let cfg = CrawlerConfig::builder("https://example.com")
+    let cfg = CrawlerConfig::builder("https://web-scraping.dev")
         .unblocker(false)
         .build()
         .expect("build");
@@ -1808,7 +1812,7 @@ fn crawler_unblocker_off_omits_the_key() {
 
 #[test]
 fn crawler_disabling_after_build_turns_the_feature_off_under_either_name() {
-    let mut legacy = CrawlerConfig::builder("https://example.com")
+    let mut legacy = CrawlerConfig::builder("https://web-scraping.dev")
         .asp(true)
         .build()
         .expect("build");
@@ -1816,7 +1820,7 @@ fn crawler_disabling_after_build_turns_the_feature_off_under_either_name() {
     assert!(!legacy.unblocker_enabled());
     assert!(crawl_body(&legacy).get("asp").is_none());
 
-    let mut current = CrawlerConfig::builder("https://example.com")
+    let mut current = CrawlerConfig::builder("https://web-scraping.dev")
         .unblocker(true)
         .build()
         .expect("build");
@@ -1827,7 +1831,7 @@ fn crawler_disabling_after_build_turns_the_feature_off_under_either_name() {
 
 #[test]
 fn crawler_unblocker_reaches_the_multipart_config_part() {
-    let cfg = CrawlerConfig::builder_url_list(["https://example.com/a"])
+    let cfg = CrawlerConfig::builder_url_list(["https://web-scraping.dev/a"])
         .unblocker(true)
         .build()
         .expect("build");
@@ -2033,7 +2037,7 @@ fn loaded_scrape(input: Input, v: bool) -> ScrapeConfig {
 /// The loaded scrape surface WITHOUT the anti-bot toggle, so the truth table
 /// can apply both names to it in either order.
 fn loaded_scrape_builder() -> ScrapeConfigBuilder {
-    ScrapeConfig::builder("https://example.com/parity")
+    ScrapeConfig::builder("https://web-scraping.dev/parity")
         .method(HttpMethod::Post)
         .body("payload=1")
         .header("X-Test", "value")
@@ -2086,7 +2090,7 @@ fn loaded_crawler(input: Input, v: bool) -> CrawlerConfig {
 
 /// The loaded crawler surface WITHOUT the anti-bot toggle.
 fn loaded_crawler_builder() -> CrawlerConfigBuilder {
-    CrawlerConfig::builder("https://example.com/parity")
+    CrawlerConfig::builder("https://web-scraping.dev/parity")
         .page_limit(10)
         .max_depth(3)
         .max_duration(600)
@@ -2094,9 +2098,9 @@ fn loaded_crawler_builder() -> CrawlerConfigBuilder {
         .exclude_paths(vec!["/private".to_string()])
         .ignore_base_path_restriction(true)
         .follow_external_links(true)
-        .allowed_external_domains(vec!["cdn.example.com".to_string()])
+        .allowed_external_domains(vec!["httpbin.dev".to_string()])
         .follow_internal_subdomains(false)
-        .allowed_internal_subdomains(vec!["shop.example.com".to_string()])
+        .allowed_internal_subdomains(vec!["shop.web-scraping.dev".to_string()])
         .header("X-Test", "value")
         .delay(100)
         .user_agent("parity/1.0")
@@ -2120,11 +2124,14 @@ fn loaded_crawler_builder() -> CrawlerConfigBuilder {
 }
 
 fn loaded_crawler_url_list(input: Input, v: bool) -> CrawlerConfig {
-    let b = CrawlerConfig::builder_url_list(["https://example.com/a", "https://example.com/b"])
-        .page_limit(10)
-        .header("X-Test", "value")
-        .content_format(CrawlerContentFormat::Markdown)
-        .country("us");
+    let b = CrawlerConfig::builder_url_list([
+        "https://web-scraping.dev/a",
+        "https://web-scraping.dev/b",
+    ])
+    .page_limit(10)
+    .header("X-Test", "value")
+    .content_format(CrawlerContentFormat::Markdown)
+    .country("us");
     let b = match input {
         Input::Asp => b.asp(v),
         Input::Unblocker => b.unblocker(v),
@@ -2229,7 +2236,7 @@ fn scrape_unblocker_truth_table_resolves_and_emits_as_decided() {
     for row in PARITY_MATRIX {
         for &order in orders(row) {
             let cfg = apply_scrape(
-                ScrapeConfig::builder("https://example.com/matrix"),
+                ScrapeConfig::builder("https://web-scraping.dev/matrix"),
                 row,
                 order,
             );
@@ -2264,7 +2271,7 @@ fn crawler_unblocker_truth_table_resolves_and_emits_as_decided() {
     for row in PARITY_MATRIX {
         for &order in orders(row) {
             let cfg = apply_crawler(
-                CrawlerConfig::builder("https://example.com/matrix"),
+                CrawlerConfig::builder("https://web-scraping.dev/matrix"),
                 row,
                 order,
             );
@@ -2303,7 +2310,10 @@ fn crawler_unblocker_truth_table_reaches_the_multipart_and_remote_list_paths() {
 
             // In-memory url_list -> multipart.
             let multipart_cfg = apply_crawler(
-                CrawlerConfig::builder_url_list(["https://example.com/a", "https://example.com/b"]),
+                CrawlerConfig::builder_url_list([
+                    "https://web-scraping.dev/a",
+                    "https://web-scraping.dev/b",
+                ]),
                 row,
                 order,
             )
@@ -2327,7 +2337,7 @@ fn crawler_unblocker_truth_table_reaches_the_multipart_and_remote_list_paths() {
 
             // remote_url_list -> JSON body, third constructor.
             let remote_cfg = apply_crawler(
-                CrawlerConfig::builder_remote_url_list("https://example.com/urls.txt"),
+                CrawlerConfig::builder_remote_url_list("https://web-scraping.dev/urls.txt"),
                 row,
                 order,
             )
@@ -2414,7 +2424,7 @@ fn unblocker_matrix_rows_with_the_same_outcome_are_indistinguishable() {
             for &order in orders(row) {
                 let ctx = format!("{} [{:?}]", row.case, order);
                 let scrape = apply_scrape(
-                    ScrapeConfig::builder("https://example.com/matrix"),
+                    ScrapeConfig::builder("https://web-scraping.dev/matrix"),
                     row,
                     order,
                 )
@@ -2423,7 +2433,7 @@ fn unblocker_matrix_rows_with_the_same_outcome_are_indistinguishable() {
                 scrape_outputs.push((ctx.clone(), scrape_pairs_ordered(&scrape)));
 
                 let crawl = apply_crawler(
-                    CrawlerConfig::builder("https://example.com/matrix"),
+                    CrawlerConfig::builder("https://web-scraping.dev/matrix"),
                     row,
                     order,
                 )
@@ -2465,7 +2475,7 @@ fn unblocker_never_reaches_the_wire_under_either_input_name() {
             let ctx = format!("{} [{:?}]", row.case, order);
 
             let scrape = apply_scrape(
-                ScrapeConfig::builder("https://example.com/matrix"),
+                ScrapeConfig::builder("https://web-scraping.dev/matrix"),
                 row,
                 order,
             )
@@ -2483,7 +2493,7 @@ fn unblocker_never_reaches_the_wire_under_either_input_name() {
             );
 
             let crawl = apply_crawler(
-                CrawlerConfig::builder("https://example.com/matrix"),
+                CrawlerConfig::builder("https://web-scraping.dev/matrix"),
                 row,
                 order,
             )
@@ -2516,7 +2526,7 @@ fn unblocker_never_reaches_the_wire_under_either_input_name() {
 fn scrape_post_construction_names_agree_in_both_directions() {
     for v in [true, false] {
         // Write under the old name, read under the new one.
-        let mut by_field = ScrapeConfig::builder("https://example.com/mut")
+        let mut by_field = ScrapeConfig::builder("https://web-scraping.dev/mut")
             .build()
             .expect("build");
         by_field.asp = v;
@@ -2527,7 +2537,7 @@ fn scrape_post_construction_names_agree_in_both_directions() {
         );
 
         // Write under the new name, read under the old one.
-        let mut by_setter = ScrapeConfig::builder("https://example.com/mut")
+        let mut by_setter = ScrapeConfig::builder("https://web-scraping.dev/mut")
             .build()
             .expect("build");
         by_setter.set_unblocker(v);
@@ -2558,13 +2568,13 @@ fn scrape_mutating_after_build_changes_the_wire_under_either_name() {
     for start in [true, false] {
         let flipped = !start;
 
-        let mut by_field = ScrapeConfig::builder("https://example.com/mut")
+        let mut by_field = ScrapeConfig::builder("https://web-scraping.dev/mut")
             .unblocker(start)
             .build()
             .expect("build");
         by_field.asp = flipped;
 
-        let mut by_setter = ScrapeConfig::builder("https://example.com/mut")
+        let mut by_setter = ScrapeConfig::builder("https://web-scraping.dev/mut")
             .asp(start)
             .build()
             .expect("build");
@@ -2592,13 +2602,13 @@ fn scrape_mutating_after_build_changes_the_wire_under_either_name() {
 #[test]
 fn crawler_post_construction_names_agree_in_both_directions() {
     for v in [true, false] {
-        let mut by_field = CrawlerConfig::builder("https://example.com/mut")
+        let mut by_field = CrawlerConfig::builder("https://web-scraping.dev/mut")
             .build()
             .expect("build");
         by_field.asp = v;
         assert_eq!(by_field.unblocker_enabled(), v);
 
-        let mut by_setter = CrawlerConfig::builder("https://example.com/mut")
+        let mut by_setter = CrawlerConfig::builder("https://web-scraping.dev/mut")
             .build()
             .expect("build");
         by_setter.set_unblocker(v);
@@ -2624,13 +2634,13 @@ fn crawler_mutating_after_build_changes_the_wire_under_either_name() {
     for start in [true, false] {
         let flipped = !start;
 
-        let mut by_field = CrawlerConfig::builder("https://example.com/mut")
+        let mut by_field = CrawlerConfig::builder("https://web-scraping.dev/mut")
             .unblocker(start)
             .build()
             .expect("build");
         by_field.asp = flipped;
 
-        let mut by_setter = CrawlerConfig::builder("https://example.com/mut")
+        let mut by_setter = CrawlerConfig::builder("https://web-scraping.dev/mut")
             .asp(start)
             .build()
             .expect("build");
@@ -2662,12 +2672,12 @@ fn scrape_struct_literal_asp_matches_the_unblocker_builder() {
     // own default (a session keeps one exit IP unless the caller opts out).
     for v in [true, false] {
         let literal = ScrapeConfig {
-            url: "https://example.com/literal".to_string(),
+            url: "https://web-scraping.dev/literal".to_string(),
             session_sticky_proxy: true,
             asp: v,
             ..Default::default()
         };
-        let built = ScrapeConfig::builder("https://example.com/literal")
+        let built = ScrapeConfig::builder("https://web-scraping.dev/literal")
             .unblocker(v)
             .build()
             .expect("build");
@@ -2685,11 +2695,11 @@ fn scrape_struct_literal_asp_matches_the_unblocker_builder() {
 fn crawler_struct_literal_asp_matches_the_unblocker_builder() {
     for v in [true, false] {
         let literal = CrawlerConfig {
-            url: "https://example.com/literal".to_string(),
+            url: "https://web-scraping.dev/literal".to_string(),
             asp: v,
             ..Default::default()
         };
-        let built = CrawlerConfig::builder("https://example.com/literal")
+        let built = CrawlerConfig::builder("https://web-scraping.dev/literal")
             .unblocker(v)
             .build()
             .expect("build");
@@ -2720,13 +2730,13 @@ fn struct_literal_has_one_slot_so_supplied_false_and_unset_coincide() {
     // post-build-field path, where there is one slot and nothing to disagree
     // with.
     let supplied_false = ScrapeConfig {
-        url: "https://example.com/literal".to_string(),
+        url: "https://web-scraping.dev/literal".to_string(),
         session_sticky_proxy: true,
         asp: false,
         ..Default::default()
     };
     let never_supplied = ScrapeConfig {
-        url: "https://example.com/literal".to_string(),
+        url: "https://web-scraping.dev/literal".to_string(),
         session_sticky_proxy: true,
         ..Default::default()
     };
@@ -2738,12 +2748,12 @@ fn struct_literal_has_one_slot_so_supplied_false_and_unset_coincide() {
     assert!(!supplied_false.unblocker_enabled());
 
     // The builder, by contrast, keeps them apart: a supplied false vetoes.
-    let vetoed = ScrapeConfig::builder("https://example.com/literal")
+    let vetoed = ScrapeConfig::builder("https://web-scraping.dev/literal")
         .asp(false)
         .unblocker(true)
         .build()
         .expect("build");
-    let deferred = ScrapeConfig::builder("https://example.com/literal")
+    let deferred = ScrapeConfig::builder("https://web-scraping.dev/literal")
         .unblocker(true)
         .build()
         .expect("build");
