@@ -51,7 +51,7 @@ fn is_legacy_separates_legacy_names_from_the_new_pools() {
 #[test]
 fn scrape_sends_the_pool_without_asp() {
     for (pool, wire) in POOLS {
-        let cfg = ScrapeConfig::builder("https://example.com")
+        let cfg = ScrapeConfig::builder("https://web-scraping.dev")
             .proxy_pool(pool)
             .build()
             .expect("build");
@@ -59,7 +59,7 @@ fn scrape_sends_the_pool_without_asp() {
         assert_eq!(value(&pairs, "proxy_pool"), Some(wire));
         assert_eq!(value(&pairs, "asp"), None, "{wire} emitted asp");
     }
-    let cfg = ScrapeConfig::builder("https://example.com")
+    let cfg = ScrapeConfig::builder("https://web-scraping.dev")
         .build()
         .expect("build");
     let pairs = cfg.to_query_pairs().expect("pairs");
@@ -73,7 +73,7 @@ fn scrape_sends_the_pool_without_asp() {
 #[test]
 fn crawler_takes_the_pool_enum_as_its_pool_string() {
     for (pool, wire) in POOLS {
-        let cfg = CrawlerConfig::builder("https://example.com")
+        let cfg = CrawlerConfig::builder("https://web-scraping.dev")
             .proxy_pool(pool)
             .build()
             .expect("build");
@@ -86,7 +86,7 @@ fn crawler_takes_the_pool_enum_as_its_pool_string() {
 
 #[test]
 fn legacy_pool_with_unblocker_is_unchanged() {
-    let cfg = ScrapeConfig::builder("https://example.com")
+    let cfg = ScrapeConfig::builder("https://web-scraping.dev")
         .proxy_pool(ProxyPool::PublicResidentialPool)
         .unblocker(true)
         .build()
@@ -99,14 +99,14 @@ fn legacy_pool_with_unblocker_is_unchanged() {
 #[test]
 fn screenshot_sends_the_pool_as_proxy_pool() {
     for (pool, wire) in POOLS {
-        let cfg = ScreenshotConfig::builder("https://example.com")
+        let cfg = ScreenshotConfig::builder("https://web-scraping.dev")
             .proxy_pool(pool)
             .build()
             .expect("build");
         let pairs = cfg.to_query_pairs().expect("pairs");
         assert_eq!(value(&pairs, "proxy_pool"), Some(wire));
     }
-    let cfg = ScreenshotConfig::builder("https://example.com")
+    let cfg = ScreenshotConfig::builder("https://web-scraping.dev")
         .build()
         .expect("build");
     let pairs = cfg.to_query_pairs().expect("pairs");
