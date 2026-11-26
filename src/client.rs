@@ -47,6 +47,10 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(160);
 /// request, including the response body. The API allows 150 seconds for
 /// retrieval and generation together.
 const CRAWL_PROMPT_STREAM_TIMEOUT: Duration = Duration::from_secs(180);
+/// The shortest timeout an `extract` request is sent with.
+const EXTRACTION_TIMEOUT: Duration = Duration::from_secs(165);
+/// The shortest timeout a `crawl_artifact` request is sent with.
+const CRAWL_ARTIFACT_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Request-inspection callback. Fires right before `send()`.
 ///
@@ -59,6 +63,8 @@ pub type OnRequest = Arc<dyn Fn(&Method, &Url, &HeaderMap) + Send + Sync>;
 #[derive(Clone)]
 pub struct Client {
     http: reqwest::Client,
+    /// The timeout of the HTTP client the builder made; `None` for an injected one.
+    timeout: Option<Duration>,
     key: String,
     host: String,
     cloud_browser_host: String,
@@ -102,7 +108,10 @@ impl ClientBuilder {
         self.cloud_browser_host = Some(host.into());
         self
     }
-    /// Override the HTTP timeout (default 160s).
+    /// Override the HTTP timeout (default 160s). `extract` waits at least 165s
+    /// and `crawl_artifact` at least 300s, a longer timeout being kept;
+    /// `crawls_prompt`, `crawls_prompt_answer` and `crawls_extract`, with their
+    /// single-crawl forms, wait 180s.
     pub fn timeout(mut self, t: Duration) -> Self {
         self.timeout = Some(t);
         self
@@ -113,7 +122,9 @@ impl ClientBuilder {
         self
     }
     /// Inject a pre-built `reqwest::Client`. Bypasses the timeout /
-    /// TLS-verify options.
+    /// TLS-verify options: its own timeout applies to every call but
+    /// `crawls_prompt`, `crawls_prompt_answer` and `crawls_extract`, with their
+    /// single-crawl forms, which wait 180s.
     pub fn http_client(mut self, client: reqwest::Client) -> Self {
         self.http_client = Some(client);
         self
@@ -131,20 +142,22 @@ impl ClientBuilder {
             return Err(ScrapflyError::BadApiKey);
         }
 
-        let http = if let Some(c) = self.http_client {
-            c
+        let (http, timeout) = if let Some(c) = self.http_client {
+            (c, None)
         } else {
+            let timeout = self.timeout.unwrap_or(DEFAULT_TIMEOUT);
             let mut builder = reqwest::Client::builder()
-                .timeout(self.timeout.unwrap_or(DEFAULT_TIMEOUT))
+                .timeout(timeout)
                 .user_agent(SDK_USER_AGENT);
             if self.danger_accept_invalid_certs {
                 builder = builder.danger_accept_invalid_certs(true);
             }
-            builder.build().map_err(ScrapflyError::from)?
+            (builder.build().map_err(ScrapflyError::from)?, Some(timeout))
         };
 
         Ok(Client {
             http,
+            timeout,
             key,
             host: self.host.unwrap_or_else(|| DEFAULT_HOST.to_string()),
             cloud_browser_host: self
@@ -961,6 +974,9 @@ impl Client {
     }
 
     /// Run AI extraction on a document.
+    ///
+    /// The request waits at least 165s; a longer client timeout, or an
+    /// injected client's own, is kept.
     pub async fn extract(
         &self,
         config: &ExtractionConfig,
@@ -982,7 +998,13 @@ impl Client {
             );
         }
         let resp = self
-            .send_with_retry(Method::POST, url, Some(headers), Some(config.body.clone()))
+            .send_with_retry_at_least(
+                Method::POST,
+                url,
+                Some(headers),
+                Some(config.body.clone()),
+                EXTRACTION_TIMEOUT,
+            )
             .await?;
         let (status, _h, body_bytes) = read_response(resp).await?;
         if status != 200 {
@@ -1656,6 +1678,9 @@ impl Client {
     }
 
     /// Download a crawler artifact (WARC or HAR).
+    ///
+    /// The download waits at least 300s; a longer client timeout, or an
+    /// injected client's own, is kept.
     pub async fn crawl_artifact(
         &self,
         uuid: &str,
@@ -1679,7 +1704,13 @@ impl Client {
         };
         headers.insert(ACCEPT, HeaderValue::from_static(accept));
         let resp = self
-            .send_with_retry(Method::GET, url, Some(headers), None)
+            .send_with_retry_at_least(
+                Method::GET,
+                url,
+                Some(headers),
+                None,
+                CRAWL_ARTIFACT_TIMEOUT,
+            )
             .await?;
         let (status, _h, body) = read_response(resp).await?;
         if status != 200 {
@@ -1703,9 +1734,35 @@ impl Client {
         headers: Option<HeaderMap>,
         body: Option<Vec<u8>>,
     ) -> Result<Response, ScrapflyError> {
+        self.send_with_retry_at_least(method, url, headers, body, Duration::ZERO)
+            .await
+    }
+
+    /// The timeout a request that needs `floor` is sent with: `floor` when the
+    /// client's own timeout is shorter, else `None`, the client's own applying.
+    fn timeout_at_least(&self, floor: Duration) -> Option<Duration> {
+        match self.timeout {
+            Some(timeout) if timeout < floor => Some(floor),
+            _ => None,
+        }
+    }
+
+    /// Fire a request through the retry loop, each try waiting at least `floor`.
+    pub(crate) async fn send_with_retry_at_least(
+        &self,
+        method: Method,
+        url: Url,
+        headers: Option<HeaderMap>,
+        body: Option<Vec<u8>>,
+        floor: Duration,
+    ) -> Result<Response, ScrapflyError> {
+        let timeout = self.timeout_at_least(floor);
         let mut last_err: Option<ScrapflyError> = None;
         for attempt in 0..DEFAULT_RETRIES {
             let mut req = self.http.request(method.clone(), url.clone());
+            if let Some(timeout) = timeout {
+                req = req.timeout(timeout);
+            }
             let mut hmap = headers.clone().unwrap_or_default();
             if !hmap.contains_key(USER_AGENT) {
                 hmap.insert(USER_AGENT, HeaderValue::from_static(SDK_USER_AGENT));
@@ -1732,10 +1789,7 @@ impl Client {
                     return Ok(resp);
                 }
                 Err(e) => {
-                    // A deadline hit after the request reached the API is not
-                    // retried: the API cancels a scrape whose client went away
-                    // (ERR::SCRAPE::CLIENT_DISCONNECTED, not billed), so a retry
-                    // would start it over and wait out the deadline again.
+                    // A timeout after the connection was made is returned at once, without a retry.
                     if e.is_timeout() && !e.is_connect() {
                         return Err(ScrapflyError::from(e));
                     }
@@ -2259,16 +2313,30 @@ mod batch_entry_tests {
 }
 
 #[cfg(test)]
-mod retry_tests {
+mod timeout_tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
-    /// Accepts every connection and counts it; `reply` is written after the
-    /// request is read, or nothing when it is `None` (the request hangs).
-    async fn serve(reply: Option<&'static [u8]>) -> (String, Arc<AtomicUsize>) {
+    /// What the test server does with a request it read.
+    #[derive(Clone, Copy)]
+    enum Answer {
+        /// Nothing: the request hangs.
+        Hold,
+        /// It closes the connection without an answer.
+        Close,
+        /// It writes these bytes after this delay.
+        Reply(Duration, &'static [u8]),
+    }
+
+    const BAD_GATEWAY: &[u8] =
+        b"HTTP/1.1 502 Bad Gateway\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
+    const BAD_REQUEST: &[u8] = b"HTTP/1.1 400 Bad Request\r\ncontent-type: application/json\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}";
+
+    /// Accepts every connection and counts it, then answers the request it reads.
+    async fn serve(answer: Answer) -> (String, Arc<AtomicUsize>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let hits = Arc::new(AtomicUsize::new(0));
@@ -2280,11 +2348,13 @@ mod retry_tests {
                 tokio::spawn(async move {
                     let mut buf = [0u8; 4096];
                     let _ = sock.read(&mut buf).await;
-                    match reply {
-                        Some(bytes) => {
+                    match answer {
+                        Answer::Hold => tokio::time::sleep(Duration::from_secs(30)).await,
+                        Answer::Close => drop(sock),
+                        Answer::Reply(delay, bytes) => {
+                            tokio::time::sleep(delay).await;
                             let _ = sock.write_all(bytes).await;
                         }
-                        None => tokio::time::sleep(Duration::from_secs(30)).await,
                     }
                 });
             }
@@ -2301,37 +2371,232 @@ mod retry_tests {
             .unwrap()
     }
 
-    #[tokio::test]
-    async fn a_timed_out_request_is_sent_once() {
-        let (host, hits) = serve(None).await;
-        let c = client(&host, Duration::from_millis(100));
-        let url = Url::parse(&format!("{host}/scrape")).unwrap();
-        let err = c
-            .send_with_retry(Method::GET, url, None, None)
-            .await
-            .unwrap_err();
-        assert!(matches!(err, ScrapflyError::Transport(ref e) if e.is_timeout()));
-        assert_eq!(hits.load(Ordering::SeqCst), 1);
+    fn scrape_config() -> ScrapeConfig {
+        ScrapeConfig::builder("https://web-scraping.dev/product/1")
+            .build()
+            .unwrap()
+    }
+
+    fn is_timeout(err: &ScrapflyError) -> bool {
+        matches!(err, ScrapflyError::Transport(e) if e.is_timeout())
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_scrape_tried_again_waits_one_retry_delay_between_tries() {
+        let (served, _) = serve(Answer::Reply(Duration::ZERO, BAD_GATEWAY)).await;
+        let refused = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            format!("http://{}", listener.local_addr().unwrap())
+        };
+        let rows = [
+            ("a server error", served),
+            ("a refused connection", refused),
+        ];
+
+        for (name, host) in rows {
+            let tries = Arc::new(AtomicUsize::new(0));
+            let counter = tries.clone();
+            let client = Client::builder()
+                .api_key("key")
+                .host(host)
+                // Its only timers are the retry delays, so the paused clock moves by them alone.
+                .http_client(
+                    reqwest::Client::builder()
+                        .pool_idle_timeout(None)
+                        .build()
+                        .unwrap(),
+                )
+                .on_request(Arc::new(move |_: &Method, _: &Url, _: &HeaderMap| {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                }))
+                .build()
+                .unwrap();
+            let started = tokio::time::Instant::now();
+
+            let err = client.scrape(&scrape_config()).await.unwrap_err();
+
+            assert_eq!(tries.load(Ordering::SeqCst), 3, "{name}: tries, {err}");
+            assert_eq!(started.elapsed(), Duration::from_secs(2), "{name}: waits");
+        }
     }
 
     #[tokio::test]
-    async fn a_server_error_is_retried() {
-        let (host, hits) = serve(Some(
-            b"HTTP/1.1 502 Bad Gateway\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
-        ))
-        .await;
-        let c = client(&host, Duration::from_secs(5));
-        let url = Url::parse(&format!("{host}/scrape")).unwrap();
-        let resp = c
-            .send_with_retry(Method::GET, url, None, None)
-            .await
+    async fn a_scrape_whose_connect_timed_out_is_tried_again() {
+        // A listener whose accept queue is full drops the SYN of a new connect, which then hangs.
+        let socket = tokio::net::TcpSocket::new_v4().unwrap();
+        socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let listener = socket.listen(1).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let mut queued = Vec::new();
+        while let Ok(Ok(stream)) = tokio::time::timeout(
+            Duration::from_millis(200),
+            tokio::net::TcpStream::connect(addr),
+        )
+        .await
+        {
+            queued.push(stream);
+        }
+        let tries = Arc::new(AtomicUsize::new(0));
+        let counter = tries.clone();
+        let client = Client::builder()
+            .api_key("key")
+            .host(format!("http://{addr}"))
+            .http_client(
+                reqwest::Client::builder()
+                    .connect_timeout(Duration::from_millis(100))
+                    .build()
+                    .unwrap(),
+            )
+            .on_request(Arc::new(move |_: &Method, _: &Url, _: &HeaderMap| {
+                counter.fetch_add(1, Ordering::SeqCst);
+            }))
+            .build()
             .unwrap();
-        assert_eq!(resp.status().as_u16(), 502);
-        assert_eq!(hits.load(Ordering::SeqCst), DEFAULT_RETRIES);
+
+        let err = client.scrape(&scrape_config()).await.unwrap_err();
+
+        assert!(
+            matches!(err, ScrapflyError::Transport(ref e) if e.is_connect() && e.is_timeout()),
+            "{err}"
+        );
+        assert_eq!(tries.load(Ordering::SeqCst), 3);
+        drop(queued);
+    }
+
+    #[tokio::test]
+    async fn a_scrape_is_sent_again_unless_it_timed_out_after_the_connection() {
+        let rows = [
+            (
+                "a timeout after the request was sent",
+                Answer::Hold,
+                1,
+                true,
+            ),
+            (
+                "a connection closed before an answer",
+                Answer::Close,
+                3,
+                false,
+            ),
+            (
+                "a server error",
+                Answer::Reply(Duration::ZERO, BAD_GATEWAY),
+                3,
+                false,
+            ),
+        ];
+        for (name, answer, sends, timed_out) in rows {
+            let (host, hits) = serve(answer).await;
+
+            let err = client(&host, Duration::from_millis(200))
+                .scrape(&scrape_config())
+                .await
+                .unwrap_err();
+
+            assert_eq!(hits.load(Ordering::SeqCst), sends, "{name}: sends");
+            assert_eq!(is_timeout(&err), timed_out, "{name}: {err}");
+        }
+    }
+
+    #[tokio::test]
+    async fn each_call_waits_for_the_timeout_of_its_api() {
+        let (host, _) = serve(Answer::Reply(Duration::from_secs(1), BAD_REQUEST)).await;
+        let short = client(&host, Duration::from_millis(200));
+        let injected = Client::builder()
+            .api_key("key")
+            .host(&host)
+            .http_client(
+                reqwest::Client::builder()
+                    .timeout(Duration::from_millis(200))
+                    .build()
+                    .unwrap(),
+            )
+            .build()
+            .unwrap();
+        let screenshot = ScreenshotConfig::builder("https://web-scraping.dev/product/1")
+            .build()
+            .unwrap();
+        let extraction =
+            ExtractionConfig::builder(b"<h1>Box of Chocolate Candy</h1>".to_vec(), "text/html")
+                .extraction_prompt("the product name")
+                .build()
+                .unwrap();
+
+        let rows = [
+            ("a scrape", short.scrape(&scrape_config()).await.err(), true),
+            (
+                "a screenshot",
+                short.screenshot(&screenshot).await.err(),
+                true,
+            ),
+            (
+                "an extraction",
+                short.extract(&extraction).await.err(),
+                false,
+            ),
+            (
+                "a crawl artifact",
+                short
+                    .crawl_artifact("crawl-1", CrawlerArtifactType::Warc)
+                    .await
+                    .err(),
+                false,
+            ),
+            (
+                "an extraction on an injected client",
+                injected.extract(&extraction).await.err(),
+                true,
+            ),
+        ];
+
+        for (name, err, timed_out) in rows {
+            let err = err.unwrap_or_else(|| panic!("{name}: the call succeeded"));
+            assert_eq!(is_timeout(&err), timed_out, "{name}: {err}");
+        }
     }
 
     #[test]
-    fn the_default_timeout_covers_the_scrape_read_timeout() {
-        assert!(DEFAULT_TIMEOUT >= Duration::from_secs(155));
+    fn a_request_is_sent_with_the_timeout_its_api_needs() {
+        let builder = || Client::builder().api_key("key");
+        let default = builder().build().unwrap();
+        let longer = builder().timeout(Duration::from_secs(600)).build().unwrap();
+
+        // The request's own timeout; `None`: its client's applies.
+        let rows = [
+            (
+                "an extraction on the default client",
+                default.timeout_at_least(EXTRACTION_TIMEOUT),
+                Some(165),
+            ),
+            (
+                "a crawl artifact on the default client",
+                default.timeout_at_least(CRAWL_ARTIFACT_TIMEOUT),
+                Some(300),
+            ),
+            (
+                "an extraction under a longer client timeout",
+                longer.timeout_at_least(EXTRACTION_TIMEOUT),
+                None,
+            ),
+            (
+                "a crawl artifact under a longer client timeout",
+                longer.timeout_at_least(CRAWL_ARTIFACT_TIMEOUT),
+                None,
+            ),
+            (
+                "a call that needs 160s on the default client",
+                default.timeout_at_least(Duration::from_secs(160)),
+                None,
+            ),
+            (
+                "a call that needs 161s on the default client",
+                default.timeout_at_least(Duration::from_secs(161)),
+                Some(161),
+            ),
+        ];
+
+        for (name, timeout, want) in rows {
+            assert_eq!(timeout, want.map(Duration::from_secs), "{name}");
+        }
     }
 }
