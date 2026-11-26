@@ -348,6 +348,25 @@ fn cloud_browser_url_sends_downloads_stream() {
 }
 
 #[test]
+fn cloud_browser_url_sends_share_cdp_for_joiners() {
+    let client = Client::builder()
+        .api_key(VNC_TEST_API_KEY.to_string())
+        .build()
+        .expect("client");
+    let cfg = BrowserConfig {
+        session: Some("shared-shop".into()),
+        share_cdp: true,
+        ..Default::default()
+    };
+    let joined = client.cloud_browser_url(&cfg);
+    assert!(joined.contains("session=shared-shop"));
+    assert!(joined.contains("share_cdp=true"));
+    assert!(!client
+        .cloud_browser_url(&BrowserConfig::default())
+        .contains("share_cdp"));
+}
+
+#[test]
 fn cloud_browser_url_omits_target_url_when_unset() {
     let client = Client::builder()
         .api_key(VNC_TEST_API_KEY.to_string())

@@ -34,6 +34,9 @@ pub struct BrowserConfig {
     /// Session name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
+    /// Join an existing named browser on a new tab.
+    #[serde(skip_serializing_if = "is_false")]
+    pub share_cdp: bool,
     /// Session timeout (seconds).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u32>,
@@ -302,6 +305,9 @@ impl Client {
         }
         if let Some(v) = &config.session {
             pairs.push(("session".into(), v.clone()));
+        }
+        if config.share_cdp {
+            pairs.push(("share_cdp".into(), "true".into()));
         }
         if let Some(v) = config.timeout {
             pairs.push(("timeout".into(), v.to_string()));
