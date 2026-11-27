@@ -8,6 +8,33 @@ use crate::client::Client;
 use crate::enums::VaultLinkedService;
 use crate::error::{from_response, ScrapflyError};
 
+/// Host rules for a Cloud Browser session. Domains include their subdomains.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct NetworkPolicy {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    allow: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    block: Vec<String>,
+}
+
+impl NetworkPolicy {
+    /// Allow a domain or IP address.
+    pub fn allow(mut self, host: impl Into<String>) -> Self {
+        self.allow.push(host.into());
+        self
+    }
+
+    /// Block a domain or IP address.
+    pub fn block(mut self, host: impl Into<String>) -> Self {
+        self.block.push(host.into());
+        self
+    }
+
+    fn is_empty(&self) -> bool {
+        self.allow.is_empty() && self.block.is_empty()
+    }
+}
+
 /// Configuration for a Cloud Browser WebSocket session (passed to
 /// [`Client::cloud_browser_url`]).
 #[derive(Debug, Clone, Default, Serialize)]
@@ -79,6 +106,9 @@ pub struct BrowserConfig {
     /// bare hostname is rejected server-side.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_url: Option<String>,
+    /// Restrict the domains and IP addresses this session can reach.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub network_policy: Option<NetworkPolicy>,
     /// Browser brand.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub browser_brand: Option<String>,
@@ -336,6 +366,10 @@ impl Client {
         }
         if config.debug {
             pairs.push(("debug".into(), "true".into()));
+        }
+        if let Some(policy) = config.network_policy.as_ref().filter(|p| !p.is_empty()) {
+            let json = serde_json::to_string(policy).expect("network policy contains only strings");
+            pairs.push(("network_policy".into(), json));
         }
         if let Some(v) = &config.target_url {
             pairs.push(("target_url".into(), v.clone()));

@@ -78,7 +78,7 @@ pub use client::{
     Client, ClientBuilder, CrawlExtractOptions, CrawlPromptOptions, CrawlRefreshSettings,
     CrawlSearchOptions, CrawlerSearchMode, OnRequest,
 };
-pub use cloud_browser::{project_salt, BrowserConfig, UnblockConfig, UnblockResult};
+pub use cloud_browser::{project_salt, BrowserConfig, NetworkPolicy, UnblockConfig, UnblockResult};
 #[cfg(feature = "chromiumoxide")]
 pub use cloud_browser_downloads::ChromiumoxideCdp;
 pub use cloud_browser_downloads::{

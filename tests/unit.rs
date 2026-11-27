@@ -6,8 +6,8 @@ use scrapfly_sdk::result::crawler::CrawlerUrls;
 use scrapfly_sdk::{
     BrowserConfig, Client, CrawlPromptOptions, CrawlRefreshSettings, CrawlSearchOptions,
     CrawlerConfig, CrawlerPromptDone, CrawlerPromptEvent, CrawlerRefreshState, CrawlerSearchMode,
-    CrawlerSearchResponse, CrawlerStatus, CrawlerWebhook, CrawlerWebhookEvent, ScrapflyError,
-    VaultLinkedService,
+    CrawlerSearchResponse, CrawlerStatus, CrawlerWebhook, CrawlerWebhookEvent, NetworkPolicy,
+    ScrapflyError, VaultLinkedService,
 };
 
 #[test]
@@ -264,6 +264,47 @@ fn vnc_client_password_none_when_server_would_not_salt() {
             ..Default::default()
         };
         assert_eq!(cfg.vnc_client_password(VNC_TEST_API_KEY), None, "{case}");
+    }
+}
+
+#[test]
+fn cloud_browser_network_policy() {
+    let client = Client::builder().api_key(VNC_TEST_API_KEY).build().unwrap();
+    for (policy, expected) in [
+        (None, None),
+        (Some(NetworkPolicy::default()), None),
+        (
+            Some(NetworkPolicy::default().block("httpbin.dev")),
+            Some(serde_json::json!({"block": ["httpbin.dev"]})),
+        ),
+        (
+            Some(NetworkPolicy::default().allow("web-scraping.dev")),
+            Some(serde_json::json!({"allow": ["web-scraping.dev"]})),
+        ),
+        (
+            Some(
+                NetworkPolicy::default()
+                    .allow("web-scraping.dev")
+                    .allow("2001:db8::1")
+                    .block("ads.web-scraping.dev"),
+            ),
+            Some(serde_json::json!({
+                "allow": ["web-scraping.dev", "2001:db8::1"],
+                "block": ["ads.web-scraping.dev"],
+            })),
+        ),
+    ] {
+        let config = BrowserConfig {
+            network_policy: policy,
+            ..Default::default()
+        };
+        let url = url::Url::parse(&client.cloud_browser_url(&config)).unwrap();
+        let values: Vec<serde_json::Value> = url
+            .query_pairs()
+            .filter(|(name, _)| name == "network_policy")
+            .map(|(_, json)| serde_json::from_str(&json).unwrap())
+            .collect();
+        assert_eq!(values, expected.into_iter().collect::<Vec<_>>());
     }
 }
 
